@@ -1,0 +1,2397 @@
+---
+title: "Ứng dụng mô hình hồi quy Logit trong phân tích các yếu tố ảnh hưởng đến khả năng nhân viên nghỉ việc"
+author: ""
+date: "`r format(Sys.Date(), '%d/%m/%Y')`"
+lang: vi
+output:
+  html_document:
+    theme: cosmo
+    highlight: tango
+    toc: true
+    toc_float: true
+    number_sections: true
+    code_folding: hide
+    df_print: paged
+---
+
+```{css embedded-report-style, echo=FALSE}
+/* Shared by logit.Rmd and its self-contained HTML export. */
+:root {
+  --report-font: "Noto Sans", "Segoe UI", "DejaVu Sans", sans-serif;
+  --report-mono: "Liberation Mono", Consolas, "DejaVu Sans Mono", monospace;
+  --report-ink: #26323c;
+  --report-muted: #52616e;
+  --report-accent: #225c88;
+  --report-line: #dce2e7;
+  --report-code: #f5f7f9;
+  --report-gap: 1rem;
+}
+html { font-size: 16px; }
+body {
+  font-family: var(--report-font);
+  font-size: 1.0625rem;
+  font-weight: 400;
+  line-height: 1.7;
+  color: var(--report-ink);
+}
+div.main-container { max-width: 1280px; padding-top: 2rem; padding-bottom: 4rem; }
+.toc-content { padding-left: 2rem; padding-right: 2rem; min-width: 0; }
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--report-font);
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--report-ink);
+  overflow-wrap: anywhere;
+}
+h1.title { font-size: 2rem; line-height: 1.4; margin: 0 0 1rem; }
+h1 { font-size: 1.75rem; margin-top: 3rem; margin-bottom: 1rem; }
+h2 { font-size: 1.4375rem; margin-top: 2rem; margin-bottom: 1rem; }
+h3 { font-size: 1.1875rem; margin-top: 1.5rem; margin-bottom: 0.75rem; }
+h4, h5, h6 { font-size: 1.0625rem; }
+#header { margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--report-line); }
+#header .date { font-size: 0.9375rem; font-weight: 400; color: var(--report-muted); }
+p, ul, ol { margin-bottom: var(--report-gap); }
+p, li { overflow-wrap: break-word; }
+strong, b { font-weight: 700; }
+a { color: var(--report-accent); text-underline-offset: 0.2em; }
+a:hover { text-decoration: underline; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--report-accent); outline-offset: 4px; }
+pre, code, kbd, samp {
+  font-family: var(--report-mono);
+  font-variant-ligatures: none;
+}
+code { font-size: 0.875em; }
+p code, li code { white-space: normal; overflow-wrap: anywhere; }
+pre {
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--report-line);
+  border-radius: 4px;
+  background: var(--report-code);
+  overflow-x: auto;
+  word-break: normal;
+  overflow-wrap: normal;
+  white-space: pre;
+}
+pre code, pre > code.sourceCode > span { font-size: inherit; line-height: inherit; white-space: pre; }
+pre:not([class]) { background: var(--report-code); }
+table, .pagedtable { font-size: 0.875rem; font-variant-numeric: tabular-nums; }
+table th, table td { line-height: 1.5; }
+/* Wide statistical tables scroll within the report, not the page. */
+.toc-content table { display: block; max-width: 100%; overflow-x: auto; }
+div.tocify { max-width: 260px; border-color: var(--report-line); border-radius: 4px; }
+.tocify ul, .tocify li { font-family: var(--report-font); font-size: 0.875rem; line-height: 1.5; }
+.tocify .list-group-item { padding: 0.5rem 0.75rem; }
+.tocify-subheader .tocify-item { font-size: 0.8125rem; }
+.tocify .list-group-item.active { background: var(--report-accent); border-color: var(--report-accent); }
+.btn, .dropdown-menu { font-family: var(--report-font); }
+.btn { font-size: 0.8125rem; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 767px) {
+  div.main-container { padding-top: 1rem; }
+  .toc-content { padding-left: 1rem; padding-right: 1rem; }
+  h1.title { font-size: 1.5rem; }
+  h1 { font-size: 1.4375rem; }
+  h2 { font-size: 1.1875rem; }
+  div.tocify { max-height: 16rem; }
+  .pagedtable { max-width: 100%; overflow-x: auto; }
+}
+@media print {
+  body { font-size: 11pt; color: #26323c; }
+  div.main-container { max-width: none; padding: 0; }
+  .toc-content { width: 100%; padding: 0; float: none; }
+  #TOC, .code-folding-btn, #header .btn-group { display: none; }
+  h1, h2, h3 { break-after: avoid; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+}
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, error = FALSE, dev = "png",
+                     dev.args = list(type = "cairo"), fig.width = 9,
+                     fig.height = 6, dpi = 144)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(corrplot)
+library(scales)
+```
+
+## Phạm vi và cách đọc kết quả {.unnumbered}
+
+Báo cáo tách hai mục tiêu: phân tích mối liên hệ có điều chỉnh và đánh giá dự đoán nghỉ việc. Đây là phân tích **khám phá** trên dữ liệu giả định, không phải nghiên cứu xác nhận hay bằng chứng nhân quả. Các kiểm định đơn biến chỉ mô tả, không được dùng làm bộ lọc duy nhất để chọn biến. Mức ý nghĩa tham khảo là 0,05; các họ kiểm định được hiệu chỉnh Holm khi nêu rõ.
+
+Phần suy luận dùng toàn bộ mẫu để mô tả. Phần dự đoán xây dựng lại mô hình từ tập huấn luyện, chọn đặc tả và ngưỡng chỉ trong tập này; không dùng mô hình đã khớp toàn mẫu. Vì dữ liệu đã được khám phá trước khi thiết lập quy trình, kết quả kiểm tra chỉ là xác thực nội bộ hồi cứu, không phải kiểm định độc lập bên ngoài.
+
+# Giới thiệu bộ dữ liệu
+[IBM HR Analytics Employee Attrition & Performance](https://www.kaggle.com/datasets/pavansubhasht/ibm-hr-analytics-attrition-dataset/) là một tập giả định do IBM phát triển. Bài toán cốt lõi mà tập dữ liệu này giải quyết là dự đoán khả năng nghỉ việc của nhân viên và tìm ra các yếu tố ảnh hưởng lớn nhất đến quyết định rời đi của họ.
+
+## Tải dữ liệu
+```{R load}
+data <- read.csv("WA_Fn-UseC_-HR-Employee-Attrition.csv")
+stopifnot(!anyNA(data), all(data$Attrition %in% c("Yes", "No")),
+          !anyDuplicated(data$EmployeeNumber))
+head(data, 10)
+```
+
+## Kiểm tra số giá trị thiếu hay không
+```{R}
+sapply(data, function(x) sum(is.na(x)))
+```
+
+## Số lượng quan sát 
+```{R}
+str(data)
+cat("Số quan sát: ", nrow(data), "| Số biến: ", ncol(data))
+```
+
+## Giới thiệu biến 
+### Loại bỏ các biến không có giá trị phân tích
+Bộ dữ liệu gồm có 35 biến, trong đó có 4 biến mang giá trị không đổi trong suốt quan sát: 
+- `EmployeeNumber`: Mã định danh nhân viên, chỉ dùng để phân biệt các quan sát, không mang ý nghĩa giải thích trực tiếp.
+- `EmployeeCount`, `Over18`, `StandardHours`: luôn mang giá trị không đổi
+```{R drop-constant-columns}
+# Loại bỏ các biến không có giá trị phân tích
+data <- data[, !names(data) %in% c(
+  "EmployeeNumber",
+  "EmployeeCount",
+  "Over18",
+  "StandardHours"
+)]
+```
+
+### Chuyển đổi các biến định lượng thành biến phân loại
+```{R factor-categorical-variables}
+data$Education <- factor(data$Education)
+data$EnvironmentSatisfaction <- factor(data$EnvironmentSatisfaction)
+data$JobInvolvement <- factor(data$JobInvolvement)
+data$JobLevel <- factor(data$JobLevel)
+data$JobSatisfaction <- factor(data$JobSatisfaction)
+data$PerformanceRating <- factor(data$PerformanceRating)
+data$RelationshipSatisfaction <- factor(data$RelationshipSatisfaction)
+data$StockOptionLevel <- factor(data$StockOptionLevel)
+data$WorkLifeBalance <- factor(data$WorkLifeBalance)
+```
+### Biến phụ thuộc
+Biến `Attrition` thể hiện tình trạng nghỉ việc của nhân viên tại công ty
+- `Yes` (1): Nhân viên rời công ty 
+- 'No' (0): Nhân viên vẫn ở lại công ty 
+
+```{R encode-attrition}
+# Mã hóa biến Attrition thành biến nhị phân
+data$Attrition <- ifelse(data$Attrition == "Yes", 1L, 0L)
+table(data$Attrition)
+```
+```{r model-contract, include=FALSE}
+# Nhóm tham chiếu được cố định, không chọn theo kết quả kiểm định.
+data$Gender <- factor(data$Gender, levels = c("Female", "Male"))
+data$MaritalStatus <- factor(data$MaritalStatus, levels = c("Married", "Divorced", "Single"))
+data$OverTime <- factor(data$OverTime, levels = c("No", "Yes"))
+data$JobRole <- relevel(factor(data$JobRole), ref = "Healthcare Representative")
+data$Department <- factor(data$Department)
+stopifnot(!anyNA(data))
+formula_linear <- Attrition ~ Age + DistanceFromHome + MonthlyIncome +
+  TotalWorkingYears + YearsAtCompany + YearsInCurrentRole + YearsWithCurrManager +
+  Gender + MaritalStatus + OverTime + JobRole + JobSatisfaction + EnvironmentSatisfaction
+formula_spline <- Attrition ~ splines::ns(Age, df = 2) +
+  splines::ns(DistanceFromHome, df = 2) + splines::ns(MonthlyIncome, df = 2) +
+  splines::ns(TotalWorkingYears, df = 2) + splines::ns(YearsAtCompany, df = 2) +
+  splines::ns(YearsInCurrentRole, df = 2) + splines::ns(YearsWithCurrManager, df = 2) +
+  Gender + MaritalStatus + OverTime + JobRole + JobSatisfaction + EnvironmentSatisfaction
+```
+
+Tỷ lệ nghỉ việc trong mẫu là **`r round(100 * mean(data$Attrition), 2)`%**
+(`r sum(data$Attrition)` trên `r nrow(data)` nhân viên). Đánh giá dự đoán phải xét mất cân bằng lớp, không chỉ accuracy.
+
+### Biến độc lập
+Dựa trên đặc điểm của bộ dữ liệu và các giả thuyết nghiên cứu, nhóm đề xuất ban đầu 8 biến độc lập có khả năng ảnh hưởng đến quyết định nghỉ việc của nhân viên. Đây là tập biến được lựa chọn dựa trên cơ sở lý thuyết và nhận định ban đầu, chưa phải tập biến cuối cùng sử dụng trong mô hình. Các biến sẽ tiếp tục được khảo sát thông qua phân tích dữ liệu và kiểm định thống kê để đánh giá mức độ liên hệ với biến phụ thuộc Attrition.
+- `Age`: Tuổi của nhân viên
+- `DistanceFromHome`: Khoảng cách từ nhà đến nơi làm việc
+- `MonthlyIncome`: Thu nhập hằng tháng của nhân viên
+- `TotalWorkingYears`: Tổng số năm kinh nghiệm làm việc
+- `YearsAtCompany`: Số năm làm việc tại công ty hiện tại
+- `JobSatisfaction`: Mức độ hài lòng của nhân viên đối với công việc (1 = Thấp, 2 = Trung bình, 3 = Cao, 4 = Rất cao)
+- `EnvironmentSatisfaction`: Mức độ hài lòng của nhân viên đối với môi trường làm việc (1 = Thấp, 2 = Trung bình, 3 = Cao, 4 = Rất cao)
+- `OverTime`: Tình trạng tăng ca của nhân viên (Yes/No)
+
+Các biến kiểm soát bổ sung là `YearsInCurrentRole`, `YearsWithCurrManager`, `MaritalStatus`, `JobRole` và `Gender`. Chúng đại diện cho thâm niên ở vai trò/quản lý, tình trạng hôn nhân và đặc điểm công việc/nhân khẩu học. `Gender` được giữ làm biến điều chỉnh dù kiểm định đơn biến không có ý nghĩa. `Department` được so sánh như đặc tả thay thế cho `JobRole`, không giữ đồng thời trong mô hình chính do chồng lặp thông tin. Việc mở rộng từ 8 biến giả thuyết sang bộ điều chỉnh này là lựa chọn khám phá, không đăng ký trước.
+
+# Giả thuyết nghiên cứu
+**Giả thuyết H1 (Độ tuổi - `Age`):** Độ tuổi phản ánh một phần kinh nghiệm sống và quá trình tích lũy kinh nghiệm làm việc của nhân viên. Khi tuổi tác tăng lên, nhân viên có thể có xu hướng ưu tiên sự ổn định trong công việc, đồng thời đã tích lũy được những quyền lợi và vị thế nhất định tại tổ chức. Do đó, biến `Age` được kỳ vọng có tác động ngược chiều (-) đến xác suất nghỉ việc của nhân viên khi các yếu tố khác không đổi.
+
+**Giả thuyết H2 (Khoảng cách từ nhà đến nơi làm việc - `DistanceFromHome`):** Khoảng cách di chuyển từ nhà đến nơi làm việc càng lớn có thể làm gia tăng thời gian và chi phí đi lại, đồng thời ảnh hưởng đến sự thuận tiện trong sinh hoạt và cân bằng giữa công việc với cuộc sống. Những bất tiện này có thể làm giảm mức độ hài lòng của nhân viên đối với công việc hiện tại. Vì vậy, biến `DistanceFromHome` được kỳ vọng có tác động cùng chiều (+) đến xác suất nghỉ việc khi các yếu tố khác không đổi.
+
+**Giả thuyết H3 (Thu nhập hàng tháng - `MonthlyIncome`):** Thu nhập là một trong những yếu tố phản ánh lợi ích kinh tế mà nhân viên nhận được từ công việc. Mức thu nhập cao hơn có thể giúp nhân viên cảm thấy quyền lợi tài chính được đảm bảo. Do đó, biến `MonthlyIncome` được kỳ vọng có tác động ngược chiều (-) đến xác suất nghỉ việc khi các yếu tố khác không đổi.
+
+**Giả thuyết H4 (Tổng số năm kinh nghiệm làm việc - `TotalWorkingYears`):** Quá trình tích lũy kinh nghiệm giúp nhân viên nâng cao kiến thức chuyên môn, kỹ năng và năng lực làm việc. Nhân viên có nhiều năm kinh nghiệm có thể sở hữu vị thế nghề nghiệp ổn định hơn và có nhiều cơ hội phát triển trong tổ chức. Vì vậy, biến `TotalWorkingYears` được kỳ vọng có tác động ngược chiều (-) đến xác suất nghỉ việc khi các yếu tố khác không đổi.
+
+**Giả thuyết H5 (Số năm làm việc tại công ty - `YearsAtCompany`):** Thời gian làm việc tại công ty càng dài có thể phản ánh mức độ gắn bó, sự thích nghi với môi trường tổ chức và quá trình tích lũy các mối quan hệ trong công việc. Việc chuyển sang một tổ chức mới có thể khiến nhân viên phải thích nghi lại với môi trường và quy trình làm việc. Do đó, biến `YearsAtCompany` được kỳ vọng có tác động ngược chiều (-) đến xác suất nghỉ việc khi các yếu tố khác không đổi.
+
+**Giả thuyết H6 (Mức độ hài lòng với công việc - `JobSatisfaction`):** Mức độ hài lòng với công việc phản ánh đánh giá của nhân viên về những trải nghiệm và lợi ích nhận được trong quá trình làm việc. Khi mức độ hài lòng tăng lên, nhân viên có thể hình thành thái độ tích cực hơn đối với công việc, từ đó gia tăng mong muốn tiếp tục gắn bó với công ty. Vì vậy, biến `JobSatisfaction` được kỳ vọng có mối liên hệ ngược chiều (-) với xác suất nghỉ việc khi các yếu tố khác không đổi.
+
+**Giả thuyết H7 (Mức độ hài lòng với môi trường làm việc - `EnvironmentSatisfaction`):** Môi trường làm việc tích cực có thể giúp nhân viên cảm thấy thoải mái, nhân viên có thể ít có xu hướng nhảy việc. Do đó, biến `EnvironmentSatisfaction` được kỳ vọng có mối liên hệ ngược chiều (-) với xác suất nghỉ việc khi các yếu tố khác không đổi.
+
+**Giả thuyết H8 (Tình trạng làm thêm giờ - `OverTime`):** Việc thường xuyên làm thêm giờ có thể làm gia tăng áp lực công việc, làm mất cân bằng giữa công việc và cuộc sống, từ đó làm tăng xu hướng nhân viên tìm kiếm công việc khác. Vì vậy, biến `OverTime` được kỳ vọng có tác động cùng chiều (+) đến xác suất nghỉ việc khi các yếu tố khác không đổi.
+
+# Trực quan hóa
+## Tính tương quan
+```{R correlation-matrix}
+# Xác định các biến có kiểu dữ liệu numeric
+numeric_var <- sapply(data, is.numeric)
+
+# Lọc các biến numeric
+numeric_data <- data[, numeric_var]
+
+# Tính ma trận tương quan Pearson
+corr_matrix <- cor(
+  numeric_data,
+  use = "complete.obs",
+  method = "pearson"
+)
+
+# Trực quan hóa ma trận tương quan
+library(corrplot)
+
+corrplot(
+  corr_matrix,
+  main = "\n\nMa trận tương quan",
+  method = "number"
+)
+```
+
+Các cặp biến có mối tương quan cao:
+1. MonthlyIncome và TotalWorkingYears (r = 0,77): Nhân viên có nhiều năm kinh nghiệm thường có mức thu nhập cao hơn
+
+2. YearsAtCompany và YearsWithCurrManager (r = 0,77): Nhân viên làm việc lâu năm tại công ty thường có thời gian gắn bó với quản lý hiện tại lâu hơn
+
+3. YearsAtCompany và YearsInCurrentRole (r = 0,76): Nhân viên có thâm niên lâu tại công ty thường cũng đảm nhiệm vị trí hiện tại lâu hơn
+
+4. YearsInCurrentRole và YearsWithCurrManager (r = 0,71): Thời gian đảm nhiệm vị trí hiện tại càng lâu thì thời gian làm việc với quản lý hiện tại thường cũng càng dài
+
+5. Age và TotalWorkingYears (r = 0,68): Nhân viên lớn tuổi thường có nhiều năm kinh nghiệm làm việc hơn
+
+## Tình trạng nghỉ việc của nhân viên
+```{R}
+ggplot(data, aes(
+  x = factor(Attrition),
+  fill = factor(Attrition)
+)) +
+  geom_bar() +
+  geom_text(
+    stat = "count",
+    aes(label = after_stat(count)),
+    vjust = -0.5
+  ) +
+  scale_fill_manual(
+    values = c(
+      "0" = "#A8D5BA",
+      "1" = "#F4B6C2"
+    ),
+    labels = c(
+      "0" = "Không nghỉ việc",
+      "1" = "Có nghỉ việc"
+    )
+  ) +
+  scale_x_discrete(
+    labels = c(
+      "0" = "Không",
+      "1" = "Có"
+    )
+  ) +
+  labs(
+    title = "Phân bố tình trạng nghỉ việc của nhân viên",
+    x = "Tình trạng nghỉ việc",
+    y = "Số lượng nhân viên"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+## Số lượng nhân viên theo nhóm tuổi và tình trạng nghỉ việc
+```{R}
+data$AgeGroup <- cut(
+  data$Age,
+  breaks = c(17, 25, 35, 45, 55, Inf),
+  labels = c("18-25", "26-35", "36-45", "46-55", "Trên 55")
+)
+
+ggplot(data, aes(x = AgeGroup, fill = factor(Attrition))) +
+  geom_bar(position = "stack") +
+  scale_fill_manual(
+    values = c("0" = "#A8D5BA", "1" = "#F4B6C2"),
+    labels = c("0" = "Không nghỉ việc", "1" = "Có nghỉ việc")
+  ) +
+  labs(
+    title = "Phân bố tình trạng nghỉ việc theo nhóm tuổi",
+    x = "Nhóm tuổi",
+    y = "Số lượng nhân viên",
+    fill = "Tình trạng nghỉ việc"
+  ) +
+  theme_minimal()
+```
+
+## Số lượng nhân viên theo giới tính và tình trạng nghỉ việc
+```{R}
+ggplot(data, aes(x = Gender, fill = factor(Attrition))) +
+  geom_bar(position = "stack") +
+  scale_fill_manual(
+    values = c("0" = "#A8D5BA", "1" = "#F4B6C2"),
+    labels = c("0" = "Không nghỉ việc", "1" = "Có nghỉ việc")
+  ) +
+  labs(
+    title = "Phân bố tình trạng nghỉ việc theo giới tính",
+    x = "Giới tính",
+    y = "Số lượng nhân viên",
+    fill = "Tình trạng nghỉ việc"
+  ) +
+  theme_minimal()
+```
+
+## Số lượng nhân viên theo hôn nhân và tình trạng nghỉ việc
+```{R}
+ggplot(data, aes(x = MaritalStatus, fill = factor(Attrition))) +
+  geom_bar(position = "stack") +
+  scale_fill_manual(
+    values = c("0" = "#A8D5BA", "1" = "#F4B6C2"),
+    labels = c("0" = "Không nghỉ việc", "1" = "Có nghỉ việc")
+  ) +
+  labs(
+    title = "Phân bố tình trạng nghỉ việc theo tình trạng hôn nhân",
+    x = "Tình trạng hôn nhân",
+    y = "Số lượng nhân viên",
+    fill = "Tình trạng nghỉ việc"
+  ) +
+  theme_minimal()
+```
+
+## Phân bố theo mức độ hài lòng với công việc
+```{R}
+ggplot(data, aes(x = factor(JobSatisfaction), fill = factor(Attrition))) +
+  geom_bar(position = "stack") +
+  scale_fill_manual(
+    values = c("0" = "#A8D5BA", "1" = "#F4B6C2"),
+    labels = c("0" = "Không nghỉ việc", "1" = "Có nghỉ việc")
+  ) +
+  labs(
+    title = "Phân bố tình trạng nghỉ việc theo mức độ hài lòng công việc",
+    x = "Mức độ hài lòng công việc",
+    y = "Số lượng nhân viên",
+    fill = "Tình trạng nghỉ việc"
+  ) +
+  theme_minimal()
+```
+
+## Số lượng nhân viên theo phòng ban và tình trạng nghỉ việc
+```{R}
+ggplot(data, aes(x = Department, fill = factor(Attrition))) +
+  geom_bar(position = "stack") +
+  scale_fill_manual(
+    values = c("0" = "#A8D5BA", "1" = "#F4B6C2"),
+    labels = c("0" = "Không nghỉ việc", "1" = "Có nghỉ việc")
+  ) +
+  labs(
+    title = "Phân bố tình trạng nghỉ việc theo phòng ban",
+    x = "Phòng ban",
+    y = "Số lượng nhân viên",
+    fill = "Tình trạng nghỉ việc"
+  ) +
+  theme_minimal()
+```
+
+## Phân bố theo vị trí công việc
+```{R}
+ggplot(data, aes(x = JobRole, fill = factor(Attrition))) +
+  geom_bar(position = "stack") +
+  scale_fill_manual(
+    values = c("0" = "#A8D5BA", "1" = "#F4B6C2"),
+    labels = c("0" = "Không nghỉ việc", "1" = "Có nghỉ việc")
+  ) +
+  coord_flip() +
+  labs(
+    title = "Phân bố tình trạng nghỉ việc theo vị trí công việc",
+    x = "Vị trí công việc",
+    y = "Số lượng nhân viên",
+    fill = "Tình trạng nghỉ việc"
+  ) +
+  theme_minimal()
+```
+
+## Phân bố theo tình trạng làm thêm giờ
+```{R}
+ggplot(data, aes(x = OverTime, fill = factor(Attrition))) +
+  geom_bar(position = "stack") +
+  scale_fill_manual(
+    values = c(
+      "0" = "#A8D5BA",
+      "1" = "#F4B6C2"
+    ),
+    labels = c(
+      "0" = "Không nghỉ việc",
+      "1" = "Có nghỉ việc"
+    )
+  ) +
+  labs(
+    title = "Phân bố tình trạng nghỉ việc theo tình trạng làm thêm giờ",
+    x = "Tình trạng làm thêm giờ",
+    y = "Số lượng nhân viên",
+    fill = "Tình trạng nghỉ việc"
+  ) +
+  theme_minimal()
+```
+
+# Khảo sát liên hệ đơn biến
+## Biến định lượng
+```{R}
+numeric_vars <- c(
+  "Age",
+  "MonthlyIncome",
+  "TotalWorkingYears",
+  "YearsAtCompany",
+  "YearsInCurrentRole",
+  "YearsWithCurrManager",
+  "DistanceFromHome"
+)
+
+numeric_tests <- do.call(rbind, lapply(numeric_vars, function(var) {
+  x <- data[[var]][data$Attrition == 1]
+  y <- data[[var]][data$Attrition == 0]
+  wt <- wilcox.test(x, y, exact = FALSE)
+  data.frame(Bien = var, Trung_vi_nghi = median(x), Trung_vi_o_lai = median(y),
+             W = unname(wt$statistic), p = wt$p.value,
+             Rank_biserial = 2 * unname(wt$statistic) / (length(x) * length(y)) - 1)
+}))
+numeric_tests$p_Holm <- p.adjust(numeric_tests$p, method = "holm")
+knitr::kable(numeric_tests, digits = 4, caption = "Wilcoxon hai phía; hiệu chỉnh Holm cho 7 biến")
+```
+
+Rank-biserial dương biểu thị giá trị có xu hướng cao hơn ở nhóm nghỉ việc; âm biểu thị chiều ngược lại. Đây là liên hệ chưa điều chỉnh, không phải hệ số hồi quy hay tác động nhân quả. Wilcoxon so sánh phân bố/thứ hạng; chỉ diễn giải như dịch chuyển trung vị khi hình dạng phân bố phù hợp. Không loại biến điều chỉnh chỉ vì p-value đơn biến lớn.
+
+```{R}
+aggregate(
+  data[numeric_vars],
+  by = list(Attrition = data$Attrition),
+  FUN = median,
+  na.rm = TRUE
+)
+```
+Kết quả thống kê trung vị cho thấy nhóm nhân viên nghỉ việc có giá trị thấp hơn nhóm nhân viên không nghỉ việc ở sáu biến `Age`, `MonthlyIncome`, `TotalWorkingYears`, `YearsAtCompany`, `YearsInCurrentRole` và `YearsWithCurrManager`. Ngược lại, trung vị của `DistanceFromHome` ở nhóm nghỉ việc là 9, cao hơn nhóm không nghỉ việc (7). Điều này gợi ý rằng nhân viên trẻ hơn, có thu nhập thấp hơn, ít thâm niên và sống xa nơi làm việc hơn có thể có xu hướng nghỉ việc cao hơn.
+
+```{r continuous-distributions, fig.height=8}
+continuous_long <- data |>
+  select(Attrition, all_of(numeric_vars)) |>
+  pivot_longer(-Attrition, names_to = "Bien", values_to = "Gia_tri") |>
+  mutate(Nhom = factor(Attrition, levels = c(0, 1), labels = c("Ở lại", "Nghỉ việc")))
+ggplot(continuous_long, aes(x = Nhom, y = Gia_tri, fill = Nhom)) +
+  geom_boxplot(width = 0.6, outlier.alpha = 0.3) +
+  facet_wrap(~Bien, scales = "free_y", ncol = 3) +
+  scale_fill_manual(values = c("#A8D5BA", "#F4B6C2")) +
+  labs(title = "Phân bố các biến liên tục theo tình trạng nghỉ việc",
+       x = NULL, y = "Giá trị theo đơn vị gốc") +
+  theme_minimal() + theme(legend.position = "none")
+```
+
+Các điểm ngoài hộp chỉ là quan sát xa trung vị theo quy tắc IQR, không mặc nhiên là lỗi dữ liệu. Không xóa chúng chỉ vì được đánh dấu trên biểu đồ.
+
+
+## Biến phân loại
+```{R}
+categorical_vars <- c(
+  "Department",
+  "Gender",
+  "MaritalStatus",
+  "OverTime",
+  "JobRole",
+  "JobSatisfaction",
+  "EnvironmentSatisfaction"
+)
+
+set.seed(20261108)
+categorical_tests <- do.call(rbind, lapply(categorical_vars, function(var) {
+  tab <- table(data[[var]], data$Attrition)
+  chi <- chisq.test(tab, correct = FALSE)
+  sparse <- any(chi$expected < 5)
+  test <- if (sparse) chisq.test(tab, simulate.p.value = TRUE, B = 9999) else chi
+  data.frame(Bien = var, Chi_square = unname(chi$statistic),
+             Df = (nrow(tab) - 1) * (ncol(tab) - 1),
+             Expected_min = min(chi$expected),
+             Phuong_phap = if (sparse) "Monte Carlo 9999" else "Pearson",
+             p = test$p.value,
+             Cramer_V = sqrt(unname(chi$statistic) /
+               (sum(tab) * min(nrow(tab) - 1, ncol(tab) - 1))))
+}))
+categorical_tests$p_Holm <- p.adjust(categorical_tests$p, "holm")
+knitr::kable(categorical_tests, digits = 4, caption = "Liên hệ đơn biến phân loại; Holm cho 7 biến")
+```
+
+Cramér's V đo độ mạnh liên hệ chưa điều chỉnh, không có dấu. Khi có tần số kỳ vọng dưới 5, p-value được mô phỏng Monte Carlo thay vì dựa riêng vào xấp xỉ Chi-square. Df trong bảng là bậc tự do của thống kê Pearson; phương pháp Monte Carlo không dùng phân bố tham chiếu này. Các kết quả không có ý nghĩa vẫn được giữ và không được diễn giải là chứng minh không có liên hệ.
+
+```{R}
+for (var in categorical_vars) {
+  cat("\nVariable:", var, "\n")
+
+  print(
+    prop.table(
+      table(data[[var]], data$Attrition),
+      margin = 1
+    ) * 100
+  )
+}
+```
+Xét theo các biến phân loại, tỷ lệ nghỉ việc có sự khác biệt giữa các nhóm nhân viên. Cụ thể, nhân viên thuộc phòng Sales có tỷ lệ nghỉ việc cao nhất (20.63%). Đối với tình trạng hôn nhân, nhóm nhân viên độc thân có tỷ lệ nghỉ việc cao nhất (25.53%). Đặc biệt, nhóm nhân viên có làm thêm giờ có tỷ lệ nghỉ việc lên đến 30.53%, cao gần 3 lần so với nhóm không làm thêm giờ (10.44%). Theo vị trí công việc, Sales Representative là nhóm có tỷ lệ nghỉ việc cao nhất (39.76%). Ngoài ra, mức độ hài lòng với công việc và môi trường làm việc thấp cũng đi kèm với tỷ lệ nghỉ việc cao hơn. Những kết quả này gợi ý rằng đặc điểm công việc và mức độ hài lòng có thể là những yếu tố liên quan đến quyết định nghỉ việc của nhân viên.
+
+## Chẩn đoán đặc tả ban đầu có Department và JobRole
+```{R}
+# Xây dựng mô hình Logistic Regression ban đầu
+model_full <- glm(
+  Attrition ~ Age + DistanceFromHome + MonthlyIncome +
+    TotalWorkingYears + YearsAtCompany +
+    YearsInCurrentRole + YearsWithCurrManager +
+    Department + MaritalStatus + OverTime + JobRole +
+    JobSatisfaction + EnvironmentSatisfaction,
+  data = data,
+  family = binomial(link = "logit")
+)
+
+# Kiểm tra đa cộng tuyến
+library(car)
+vif(model_full)
+```
+
+Đặc tả trên được giữ để minh họa vấn đề ban đầu, không dùng để diễn giải kết luận hay đánh giá ngoài mẫu.
+
+# Ước lượng và chẩn đoán mô hình Logit
+
+Phần này là phân tích khám phá trên bộ dữ liệu giả định, vì vậy mọi ước lượng phản ánh **mối liên hệ có điều kiện**, không phải tác động nhân quả. Các quyết định đặc tả và suy luận dưới đây phải được đọc cùng với độ lớn hiệu ứng, khoảng bất định và các chẩn đoán, thay vì chỉ dựa vào ngưỡng ý nghĩa thống kê.
+
+```{r infer-validate-input, include=FALSE}
+abort_inference <- function(...) {
+  stop(paste0(...), call. = FALSE)
+}
+
+required_objects <- c("data", "numeric_vars", "model_full", "formula_linear", "formula_spline")
+missing_objects <- required_objects[!vapply(required_objects, exists, logical(1),
+                                           envir = environment(), inherits = FALSE)]
+if (length(missing_objects) > 0L) {
+  abort_inference("Thiếu đối tượng do báo cáo cha cung cấp: ", paste(missing_objects, collapse = ", "), ".")
+}
+
+required_columns <- unique(c(
+  "Attrition", "Department", "Gender", "MaritalStatus", "OverTime", "JobRole",
+  "JobSatisfaction", "EnvironmentSatisfaction", numeric_vars,
+  all.vars(formula_linear), all.vars(formula_spline)
+))
+missing_columns <- setdiff(required_columns, names(data))
+if (length(missing_columns) > 0L) {
+  abort_inference("Dữ liệu thiếu biến bắt buộc: ", paste(missing_columns, collapse = ", "), ".")
+}
+if (!is.data.frame(data) || nrow(data) < 2L) {
+  abort_inference("`data` phải là data.frame có ít nhất hai quan sát.")
+}
+if (!is.numeric(data$Attrition) || anyNA(data$Attrition) ||
+    !all(data$Attrition %in% c(0L, 1L)) || length(unique(data$Attrition)) != 2L) {
+  abort_inference("`Attrition` phải là biến nhị phân số 0/1, không thiếu và có đủ hai lớp.")
+}
+if (any(!vapply(data[numeric_vars], is.numeric, logical(1)))) {
+  abort_inference("Bảy biến định lượng phải giữ kiểu numeric.")
+}
+if (any(!complete.cases(data[required_columns]))) {
+  abort_inference("Phân tích toàn mẫu yêu cầu không có giá trị thiếu trong các biến được sử dụng.")
+}
+
+expected_levels <- list(
+  Gender = c("Female", "Male"),
+  MaritalStatus = c("Married", "Divorced", "Single"),
+  OverTime = c("No", "Yes"),
+  JobSatisfaction = c("1", "2", "3", "4"),
+  EnvironmentSatisfaction = c("1", "2", "3", "4")
+)
+for (variable in names(expected_levels)) {
+  if (!is.factor(data[[variable]]) || !identical(levels(data[[variable]]), expected_levels[[variable]])) {
+    abort_inference("Thứ tự mức của `", variable, "` không đúng hợp đồng phân tích.")
+  }
+}
+if (!is.factor(data$JobRole) || levels(data$JobRole)[1L] != "Healthcare Representative" ||
+    !identical(levels(data$JobRole)[-1L], sort(levels(data$JobRole)[-1L]))) {
+  abort_inference("`JobRole` phải có Healthcare Representative làm mức tham chiếu và các mức còn lại theo alphabet.")
+}
+
+fit_logit <- function(formula, dataset, label) {
+  tryCatch(
+    glm(formula, data = dataset, family = binomial(link = "logit")),
+    error = function(error) {
+      abort_inference("Không thể ước lượng ", label, ": ", conditionMessage(error))
+    }
+  )
+}
+
+validate_logit <- function(model, label, expected_n) {
+  if (!inherits(model, "glm") || !identical(model$family$family, "binomial")) {
+    abort_inference(label, " không phải mô hình GLM nhị phân hợp lệ.")
+  }
+  if (!isTRUE(model$converged)) {
+    abort_inference(label, " không hội tụ; dừng thay vì diễn giải ước lượng không hợp lệ.")
+  }
+  design <- model.matrix(model)
+  if (model$rank != ncol(design)) {
+    abort_inference(label, " không đủ hạng (rank ", model$rank, "/", ncol(design), ").")
+  }
+  coefficients <- coef(model)
+  covariance <- vcov(model)
+  standard_errors <- sqrt(diag(covariance))
+  if (length(coefficients) == 0L || any(!is.finite(coefficients)) ||
+      any(!is.finite(covariance)) || any(!is.finite(standard_errors)) || any(standard_errors <= 0)) {
+    abort_inference(label, " có hệ số, phương sai hoặc sai số chuẩn không hữu hạn.")
+  }
+  if (nobs(model) != expected_n) {
+    abort_inference(label, " dùng ", nobs(model), " thay vì ", expected_n, " quan sát dự kiến.")
+  }
+  invisible(model)
+}
+
+format_p <- function(value) {
+  if (!is.finite(value)) return("không xác định")
+  if (value < 0.001) return("< 0,001")
+  sub("\\.", ",", sprintf("= %.3f", value))
+}
+```
+
+## So sánh cách biểu diễn đơn vị tổ chức
+
+`Department` và `JobRole` mô tả hai độ phân giải của cùng cấu trúc tổ chức. Hai ứng viên dưới đây dùng cùng toàn bộ biến kiểm soát, kể cả `Gender`; chúng chỉ khác nhau ở việc dùng `Department` hay `JobRole`. Vì hai mô hình không lồng nhau, AIC chỉ được dùng như một mô tả độ phù hợp tương đối trên cùng mẫu, không tạo ra một kiểm định LR hay một p-value lựa chọn mô hình.
+
+```{r infer-fit-candidates}
+linear_terms <- attr(terms(formula_linear), "term.labels")
+if (sum(linear_terms == "JobRole") != 1L || !"Gender" %in% linear_terms) {
+  abort_inference("`formula_linear` phải chứa đúng một hạng JobRole và biến kiểm soát Gender.")
+}
+department_terms <- linear_terms
+department_terms[department_terms == "JobRole"] <- "Department"
+formula_department <- reformulate(department_terms, response = "Attrition")
+
+model_department <- fit_logit(formula_department, data, "ứng viên Department")
+model_linear <- fit_logit(formula_linear, data, "ứng viên JobRole tuyến tính")
+validate_logit(model_department, "Ứng viên Department", nrow(data))
+validate_logit(model_linear, "Ứng viên JobRole tuyến tính", nrow(data))
+
+candidate_fit <- do.call(rbind, lapply(
+  list(Department_only = model_department, JobRole_only = model_linear),
+  function(model) {
+    standard_errors <- sqrt(diag(vcov(model)))
+    design <- model.matrix(model)
+    data.frame(
+      N = nobs(model),
+      Converged = isTRUE(model$converged),
+      Rank = model$rank,
+      Design_columns = ncol(design),
+      Full_rank = model$rank == ncol(design),
+      Max_SE = max(standard_errors),
+      AIC = AIC(model),
+      check.names = FALSE
+    )
+  }
+))
+candidate_fit <- data.frame(Model = rownames(candidate_fit), candidate_fit, row.names = NULL, check.names = FALSE)
+knitr::kable(candidate_fit, digits = 3, caption = "Hai ứng viên trên cùng toàn bộ mẫu và cùng tập biến kiểm soát")
+```
+
+Chênh lệch AIC mô tả (AIC Department trừ AIC JobRole) là `r sprintf("%.2f", AIC(model_department) - AIC(model_linear))`. Bất kể dấu của chênh lệch này, báo cáo giữ `JobRole` vì biến này biểu diễn nội dung công việc chi tiết hơn `Department`; đây là lựa chọn có cơ sở nội dung được áp dụng nhất quán, **không phải** chọn biến theo p-value.
+
+```{r infer-department-role-crosstab}
+department_role_table <- addmargins(table(data$Department, data$JobRole, dnn = c("Department", "JobRole")))
+department_role_display <- data.frame(
+  Department = rownames(department_role_table),
+  as.data.frame.matrix(department_role_table),
+  row.names = NULL,
+  check.names = FALSE
+)
+knitr::kable(department_role_display, caption = "Bảng chéo số quan sát giữa Department và JobRole (mô hình cũ)")
+```
+
+Bảng chéo cho thấy mức độ chồng lấp hoặc các ô cấu trúc bằng 0 giữa hai cách phân loại. Do đó, mô hình cũ chứa đồng thời hai biến chỉ được giữ để chẩn đoán; nó không được dùng cho suy luận chính.
+
+```{r infer-adjusted-gvif}
+extract_adjusted_gvif <- function(model, model_label, strict = FALSE) {
+  result <- tryCatch(
+    car::vif(model),
+    error = function(error) error
+  )
+  if (inherits(result, "error")) {
+    if (strict) {
+      abort_inference("Không tính được GVIF điều chỉnh cho ", model_label, ": ", conditionMessage(result))
+    }
+    return(data.frame(
+      Model = model_label,
+      Term = "All terms",
+      Df = NA_real_,
+      Adjusted_GVIF = NA_real_,
+      Status = paste("Not estimable:", conditionMessage(result)),
+      check.names = FALSE
+    ))
+  }
+  if (is.matrix(result)) {
+    term <- rownames(result)
+    degrees <- if ("Df" %in% colnames(result)) result[, "Df"] else rep(1, nrow(result))
+    adjusted_column <- grep("GVIF\\^", colnames(result), value = TRUE)
+    if (length(adjusted_column) == 1L) {
+      adjusted <- result[, adjusted_column]
+    } else if ("GVIF" %in% colnames(result)) {
+      adjusted <- result[, "GVIF"]^(1 / (2 * degrees))
+    } else {
+      abort_inference("Đầu ra car::vif không có cột GVIF mong đợi cho ", model_label, ".")
+    }
+  } else {
+    term <- names(result)
+    degrees <- rep(1, length(result))
+    adjusted <- sqrt(as.numeric(result))
+  }
+  data.frame(
+    Model = model_label,
+    Term = term,
+    Df = as.numeric(degrees),
+    Adjusted_GVIF = as.numeric(adjusted),
+    Status = "Estimated",
+    row.names = NULL,
+    check.names = FALSE
+  )
+}
+
+model_before_controlled <- fit_logit(
+  update(formula_linear, . ~ . + Department), data,
+  "đặc tả trước xử lý với cùng biến kiểm soát"
+)
+gvif_before <- extract_adjusted_gvif(
+  model_before_controlled, "Before: same controls + Department", strict = FALSE
+)
+gvif_after <- extract_adjusted_gvif(model_linear, "After: JobRole retained", strict = TRUE)
+adjusted_gvif_comparison <- rbind(gvif_before, gvif_after)
+knitr::kable(adjusted_gvif_comparison, digits = 3, caption = "GVIF điều chỉnh trước và sau khi bỏ Department")
+```
+
+So sánh trước/sau trong bảng dùng cùng tập biến kiểm soát, **kể cả Gender**, và chỉ khác sự hiện diện của `Department`. Nó khác mô hình minh họa ban đầu chưa điều chỉnh Gender ở chương trước. Nếu GVIF của đặc tả trước không ước lượng được, đó là kết quả chẩn đoán minh bạch của đồng tuyến tính/aliasing, không phải một giá trị bị thay thế. Mô hình sau khi giữ `JobRole` phải ước lượng được GVIF; nếu không, notebook dừng với lỗi thay vì tiếp tục bằng kết quả không đáng tin cậy.
+
+## Kiểm tra dạng hàm của các biến liên tục
+
+Mô hình tuyến tính trên thang logit được so sánh với mô hình trong đó cả bảy biến liên tục dùng natural spline hai bậc tự do. Đây là bước lựa chọn đặc tả **khám phá**. So sánh LR toàn cục được quyết định trước; các kiểm tra từng biến chỉ là phân tích độ nhạy và được điều chỉnh Holm trong cùng một họ bảy kiểm định.
+
+```{r infer-nonlinearity-tests}
+model_spline <- fit_logit(formula_spline, data, "mô hình spline df = 2")
+validate_logit(model_spline, "Mô hình spline df = 2", nrow(data))
+
+nonlinear_lr <- anova(model_linear, model_spline, test = "Chisq")
+nonlinear_p <- as.numeric(nonlinear_lr[nrow(nonlinear_lr), "Pr(>Chi)"])
+nonlinear_df <- as.numeric(nonlinear_lr[nrow(nonlinear_lr), "Df"])
+nonlinear_chisq <- as.numeric(nonlinear_lr[nrow(nonlinear_lr), "Deviance"])
+if (!is.finite(nonlinear_p) || !is.finite(nonlinear_df) || nonlinear_df <= 0 ||
+    !is.finite(nonlinear_chisq) || nonlinear_chisq < 0) {
+  abort_inference("So sánh LR phi tuyến toàn cục không hợp lệ; kiểm tra tính lồng nhau và dữ liệu đầu vào.")
+}
+
+global_nonlinearity <- data.frame(
+  Comparison = "All seven linear terms vs ns(df=2)",
+  LR_Chi_square = nonlinear_chisq,
+  Df = nonlinear_df,
+  P_value = nonlinear_p,
+  check.names = FALSE
+)
+
+single_spline_models <- setNames(vector("list", length(numeric_vars)), numeric_vars)
+per_variable_nonlinearity <- do.call(rbind, lapply(numeric_vars, function(variable) {
+  if (!variable %in% linear_terms) {
+    abort_inference("Không tìm thấy hạng tuyến tính `", variable, "` trong formula_linear.")
+  }
+  sensitivity_terms <- linear_terms
+  sensitivity_terms[sensitivity_terms == variable] <- paste0("splines::ns(", variable, ", df = 2)")
+  sensitivity_formula <- reformulate(sensitivity_terms, response = "Attrition")
+  sensitivity_model <- fit_logit(sensitivity_formula, data, paste0("mô hình spline riêng cho ", variable))
+  validate_logit(sensitivity_model, paste0("Spline riêng cho ", variable), nrow(data))
+  single_spline_models[[variable]] <<- sensitivity_model
+  comparison <- anova(model_linear, sensitivity_model, test = "Chisq")
+  p_value <- as.numeric(comparison[nrow(comparison), "Pr(>Chi)"])
+  degrees <- as.numeric(comparison[nrow(comparison), "Df"])
+  statistic <- as.numeric(comparison[nrow(comparison), "Deviance"])
+  if (!is.finite(p_value) || !is.finite(degrees) || degrees <= 0 || !is.finite(statistic)) {
+    abort_inference("Kiểm tra phi tuyến riêng cho `", variable, "` không hợp lệ.")
+  }
+  data.frame(Variable = variable, LR_Chi_square = statistic, Df = degrees, P_value = p_value)
+}))
+per_variable_nonlinearity$P_Holm <- p.adjust(per_variable_nonlinearity$P_value, method = "holm")
+
+knitr::kable(global_nonlinearity, digits = 4, caption = "Kiểm định LR phi tuyến toàn cục")
+knitr::kable(per_variable_nonlinearity, digits = 4, caption = "Độ nhạy spline df = 2 theo từng biến, điều chỉnh Holm")
+```
+
+```{r infer-select-specification, include=FALSE}
+selected_spec <- if (nonlinear_p < 0.05) "spline_df2" else "linear"
+model_final <- if (identical(selected_spec, "spline_df2")) model_spline else model_linear
+validate_logit(model_final, "Mô hình cuối", nrow(data))
+```
+
+Với kiểm định toàn cục có p `r format_p(nonlinear_p)`, đặc tả được chọn là **`r if (selected_spec == "spline_df2") "natural spline df = 2" else "tuyến tính trên thang logit"`**. Vì đặc tả được chọn sau khi quan sát dữ liệu, các p-value và khoảng tin cậy thông thường bên dưới là có điều kiện trên bước lựa chọn này; chúng không có diễn giải xác nhận nghiêm ngặt như trong một phân tích đăng ký trước.
+
+## Độ phù hợp tổng thể và hệ số
+
+```{r infer-overall-fit}
+model_null <- fit_logit(Attrition ~ 1, data, "mô hình rỗng")
+validate_logit(model_null, "Mô hình rỗng", nrow(data))
+log_likelihood_final <- logLik(model_final)
+log_likelihood_null <- logLik(model_null)
+null_lr_chisq <- 2 * (as.numeric(log_likelihood_final) - as.numeric(log_likelihood_null))
+null_lr_df <- attr(log_likelihood_final, "df") - attr(log_likelihood_null, "df")
+null_lr_p <- pchisq(null_lr_chisq, df = null_lr_df, lower.tail = FALSE)
+if (!is.finite(null_lr_chisq) || null_lr_chisq < 0 || null_lr_df <= 0 || !is.finite(null_lr_p)) {
+  abort_inference("Kiểm định LR so với mô hình rỗng không hợp lệ.")
+}
+
+n_events <- sum(data$Attrition == 1L)
+n_nonevents <- sum(data$Attrition == 0L)
+parameter_count <- model_final$rank
+outcome_event_rate <- n_events / nrow(data)
+events_per_parameter <- n_events / max(1, parameter_count - 1L)
+fit_statistics <- data.frame(
+  N = nrow(data),
+  Events = n_events,
+  Non_events = n_nonevents,
+  Event_rate = outcome_event_rate,
+  Parameters = parameter_count,
+  Events_per_predictor_df = events_per_parameter,
+  Null_LR_Chi_square = null_lr_chisq,
+  Null_LR_Df = null_lr_df,
+  Null_LR_P = null_lr_p,
+  AIC = AIC(model_final),
+  BIC = BIC(model_final),
+  McFadden_R2 = 1 - as.numeric(log_likelihood_final) / as.numeric(log_likelihood_null),
+  check.names = FALSE
+)
+fit_statistics_display <- data.frame(
+  Metric = c(
+    "N", "Events", "Non-events", "Event rate", "Parameters", "Events/predictor df",
+    "Null LR chi-square", "Null LR df", "Null LR p", "AIC", "BIC", "McFadden R2"
+  ),
+  Value = c(
+    as.character(nrow(data)),
+    as.character(n_events),
+    as.character(n_nonevents),
+    sprintf("%.4f", outcome_event_rate),
+    as.character(parameter_count),
+    sprintf("%.2f", events_per_parameter),
+    sprintf("%.3f", null_lr_chisq),
+    as.character(null_lr_df),
+    sprintf("%.4g", null_lr_p),
+    sprintf("%.2f", AIC(model_final)),
+    sprintf("%.2f", BIC(model_final)),
+    sprintf("%.4f", fit_statistics$McFadden_R2)
+  ),
+  check.names = FALSE
+)
+knitr::kable(fit_statistics_display, caption = "Độ phù hợp của mô hình cuối trên toàn mẫu")
+```
+
+Có `r n_events` trường hợp nghỉ việc trong `r nrow(data)` quan sát (tỷ lệ `r scales::percent(outcome_event_rate, accuracy = 0.1)`), nên biến cố `r if (outcome_event_rate < 0.20) "tương đối hiếm" else "không hiếm theo ngưỡng mô tả 20%"`. Mô hình ước lượng `r parameter_count` tham số độc lập, tương ứng khoảng `r sprintf("%.1f", events_per_parameter)` biến cố trên mỗi bậc tự do dự báo. Đây chỉ là chỉ báo độ thưa và độ ổn định tiềm năng, không phải bảo đảm rằng mô hình không bị quá khớp. Kiểm định LR với mô hình rỗng đánh giá đóng góp chung; McFadden pseudo-$R^2$ không được diễn giải như tỷ lệ phương sai của hồi quy tuyến tính.
+
+```{r infer-global-term-tests}
+term_drop_raw <- tryCatch(
+  drop1(model_final, test = "Chisq"),
+  error = function(error) {
+    abort_inference("Không thể thực hiện kiểm định LR theo hạng: ", conditionMessage(error))
+  }
+)
+term_drop <- as.data.frame(term_drop_raw, check.names = FALSE)
+term_drop$Term <- rownames(term_drop)
+term_drop <- term_drop[term_drop$Term != "<none>", , drop = FALSE]
+p_column <- grep("^Pr", names(term_drop), value = TRUE)
+if (length(p_column) != 1L || !all(c("Df", "LRT") %in% names(term_drop))) {
+  abort_inference("Không nhận diện được đầu ra kiểm định LR theo hạng từ drop1().")
+}
+if (any(!is.finite(term_drop$Df)) || any(!is.finite(term_drop$LRT)) ||
+    any(!is.finite(term_drop[[p_column]]))) {
+  abort_inference("Ít nhất một kiểm định LR theo hạng cho kết quả không hữu hạn.")
+}
+term_lr_tests <- data.frame(
+  Term = term_drop$Term,
+  Df = term_drop$Df,
+  LR_Chi_square = term_drop$LRT,
+  P_value = term_drop[[p_column]],
+  row.names = NULL,
+  check.names = FALSE
+)
+knitr::kable(term_lr_tests, digits = 4, caption = "Kiểm định LR toàn cục khi lần lượt bỏ từng hạng")
+```
+
+```{r infer-reference-groups}
+reference_variables <- c(
+  "Gender", "MaritalStatus", "OverTime", "JobRole",
+  "JobSatisfaction", "EnvironmentSatisfaction"
+)
+reference_groups <- data.frame(
+  Variable = reference_variables,
+  Reference = vapply(reference_variables, function(variable) levels(data[[variable]])[1L], character(1)),
+  Remaining_levels = vapply(
+    reference_variables,
+    function(variable) paste(levels(data[[variable]])[-1L], collapse = "; "),
+    character(1)
+  ),
+  check.names = FALSE
+)
+knitr::kable(reference_groups, caption = "Mức tham chiếu của các biến phân loại trong mô hình cuối")
+```
+
+```{r infer-coefficient-table}
+coefficient_matrix <- summary(model_final)$coefficients
+coefficient_names <- rownames(coefficient_matrix)
+is_spline_basis <- grepl("splines::ns\\(", coefficient_names)
+wald_lower_beta <- coefficient_matrix[, "Estimate"] - qnorm(0.975) * coefficient_matrix[, "Std. Error"]
+wald_upper_beta <- coefficient_matrix[, "Estimate"] + qnorm(0.975) * coefficient_matrix[, "Std. Error"]
+coefficient_table <- data.frame(
+  Term = coefficient_names,
+  Type = ifelse(is_spline_basis, "Spline basis", "Ordinary coefficient"),
+  Beta = coefficient_matrix[, "Estimate"],
+  SE = coefficient_matrix[, "Std. Error"],
+  Wald_lower_beta = wald_lower_beta,
+  Wald_upper_beta = wald_upper_beta,
+  P_value = coefficient_matrix[, "Pr(>|z|)"],
+  OR = ifelse(is_spline_basis, NA_real_, exp(coefficient_matrix[, "Estimate"])),
+  Wald_lower_OR = ifelse(is_spline_basis, NA_real_, exp(wald_lower_beta)),
+  Wald_upper_OR = ifelse(is_spline_basis, NA_real_, exp(wald_upper_beta)),
+  OR_note = ifelse(is_spline_basis, "OR not meaningful for an individual spline basis", "Wald approximation"),
+  row.names = NULL,
+  check.names = FALSE
+)
+coefficient_display <- data.frame(
+  Term = coefficient_table$Term,
+  Type = ifelse(is_spline_basis, "Spline", "Ordinary"),
+  Beta = coefficient_table$Beta,
+  SE = coefficient_table$SE,
+  Beta_95CI = sprintf("[%.3f, %.3f]", coefficient_table$Wald_lower_beta, coefficient_table$Wald_upper_beta),
+  P = format.pval(coefficient_table$P_value, digits = 3, eps = 0.001),
+  OR_95CI = ifelse(
+    is_spline_basis,
+    "Not meaningful",
+    sprintf("%.3f [%.3f, %.3f]", coefficient_table$OR, coefficient_table$Wald_lower_OR, coefficient_table$Wald_upper_OR)
+  ),
+  check.names = FALSE
+)
+knitr::kable(coefficient_display, digits = 4, caption = "Hệ số, p-value và khoảng Wald xấp xỉ của mô hình cuối")
+```
+
+Khoảng tin cậy trong bảng là khoảng Wald xấp xỉ. Khi dùng spline, từng hệ số cơ sở không đại diện cho một thay đổi có nội dung độc lập, nên không được mũ hóa thành OR. Với các biến liên tục, phần tiếp theo dùng tương phản có ý nghĩa hơn trên toàn bộ hàm ước lượng.
+
+## Đối chiếu tám giả thuyết bằng tương phản chuẩn hóa
+
+Tương phản liên tục thay biến quan tâm từ tứ phân vị 25 lên tứ phân vị 75 cho từng quan sát, giữ nguyên phân phối thực nghiệm của các biến còn lại, rồi lấy trung bình chênh lệch ma trận mô hình. H6 và H7 so sánh mức 4 với mức 1; H8 so sánh `Yes` với `No`. Sai số chuẩn của log-OR và chênh lệch xác suất trung bình được tính bằng delta method từ cùng ma trận hiệp phương sai.
+
+```{r infer-hypothesis-contrasts}
+model_matrix_for <- function(model, newdata) {
+  predictor_terms <- delete.response(terms(model))
+  frame <- model.frame(
+    predictor_terms,
+    data = newdata,
+    xlev = model$xlevels,
+    na.action = na.pass
+  )
+  matrix <- model.matrix(predictor_terms, frame, contrasts.arg = model$contrasts)
+  coefficient_names <- names(coef(model))
+  if (!setequal(colnames(matrix), coefficient_names)) {
+    abort_inference("Ma trận thiết kế cho tương phản không khớp hệ số mô hình.")
+  }
+  matrix[, coefficient_names, drop = FALSE]
+}
+
+replace_contrast_value <- function(dataset, variable, value) {
+  changed <- dataset
+  if (is.factor(dataset[[variable]])) {
+    value <- as.character(value)
+    if (!value %in% levels(dataset[[variable]])) {
+      abort_inference("Mức tương phản `", value, "` không tồn tại trong `", variable, "`.")
+    }
+    changed[[variable]] <- factor(
+      rep(value, nrow(dataset)),
+      levels = levels(dataset[[variable]]),
+      ordered = is.ordered(dataset[[variable]])
+    )
+  } else {
+    value <- as.numeric(value)
+    if (length(value) != 1L || !is.finite(value)) {
+      abort_inference("Giá trị tương phản của `", variable, "` phải là một số hữu hạn.")
+    }
+    changed[[variable]] <- rep(value, nrow(dataset))
+  }
+  changed
+}
+
+compute_standardized_contrast <- function(model, evaluation_data, variable, low, high) {
+  low_data <- replace_contrast_value(evaluation_data, variable, low)
+  high_data <- replace_contrast_value(evaluation_data, variable, high)
+  low_matrix <- model_matrix_for(model, low_data)
+  high_matrix <- model_matrix_for(model, high_data)
+  coefficients <- coef(model)
+  covariance <- vcov(model)
+
+  mean_difference <- colMeans(high_matrix - low_matrix)
+  log_or <- as.numeric(crossprod(mean_difference, coefficients))
+  log_or_variance <- as.numeric(t(mean_difference) %*% covariance %*% mean_difference)
+  if (!is.finite(log_or_variance) || log_or_variance <= 0) {
+    abort_inference("Phương sai delta của tương phản `", variable, "` không dương/hữu hạn.")
+  }
+  log_or_se <- sqrt(log_or_variance)
+  log_or_p <- 2 * pnorm(abs(log_or / log_or_se), lower.tail = FALSE)
+
+  low_probability <- plogis(as.vector(low_matrix %*% coefficients))
+  high_probability <- plogis(as.vector(high_matrix %*% coefficients))
+  probability_difference <- mean(high_probability - low_probability)
+  probability_gradient <- colMeans(
+    high_probability * (1 - high_probability) * high_matrix -
+      low_probability * (1 - low_probability) * low_matrix
+  )
+  probability_variance <- as.numeric(t(probability_gradient) %*% covariance %*% probability_gradient)
+  if (!is.finite(probability_variance) || probability_variance <= 0) {
+    abort_inference("Phương sai delta của chênh lệch xác suất `", variable, "` không dương/hữu hạn.")
+  }
+  probability_se <- sqrt(probability_variance)
+
+  list(
+    log_or = log_or,
+    OR = exp(log_or),
+    lower = exp(log_or - qnorm(0.975) * log_or_se),
+    upper = exp(log_or + qnorm(0.975) * log_or_se),
+    p = log_or_p,
+    probability_difference = probability_difference,
+    probability_lower = probability_difference - qnorm(0.975) * probability_se,
+    probability_upper = probability_difference + qnorm(0.975) * probability_se,
+    probability_p = 2 * pnorm(abs(probability_difference / probability_se), lower.tail = FALSE)
+  )
+}
+
+continuous_hypotheses <- data.frame(
+  hypothesis = paste0("H", 1:5),
+  variable = c("Age", "DistanceFromHome", "MonthlyIncome", "TotalWorkingYears", "YearsAtCompany"),
+  expected_direction = c(-1, 1, -1, -1, -1),
+  stringsAsFactors = FALSE
+)
+contrast_specs <- lapply(seq_len(nrow(continuous_hypotheses)), function(index) {
+  variable <- continuous_hypotheses$variable[index]
+  quartiles <- unname(quantile(data[[variable]], probs = c(0.25, 0.75), type = 7))
+  if (any(!is.finite(quartiles)) || quartiles[1L] == quartiles[2L]) {
+    abort_inference("Không thể tạo tương phản Q25 đến Q75 khác nhau cho `", variable, "`.")
+  }
+  list(
+    hypothesis = continuous_hypotheses$hypothesis[index],
+    variable = variable,
+    low = quartiles[1L],
+    high = quartiles[2L],
+    contrast = sprintf("Q25 %.3g -> Q75 %.3g", quartiles[1L], quartiles[2L]),
+    expected_direction = continuous_hypotheses$expected_direction[index]
+  )
+})
+contrast_specs <- c(contrast_specs, list(
+  list(hypothesis = "H6", variable = "JobSatisfaction", low = "1", high = "4", contrast = "4 vs 1", expected_direction = -1),
+  list(hypothesis = "H7", variable = "EnvironmentSatisfaction", low = "1", high = "4", contrast = "4 vs 1", expected_direction = -1),
+  list(hypothesis = "H8", variable = "OverTime", low = "No", high = "Yes", contrast = "Yes vs No", expected_direction = 1)
+))
+
+contrast_estimates <- lapply(contrast_specs, function(specification) {
+  compute_standardized_contrast(
+    model_final, data, specification$variable,
+    specification$low, specification$high
+  )
+})
+contrast_p <- vapply(contrast_estimates, `[[`, numeric(1), "p")
+contrast_p_holm <- p.adjust(contrast_p, method = "holm")
+contrast_log_or <- vapply(contrast_estimates, `[[`, numeric(1), "log_or")
+expected_direction <- vapply(contrast_specs, `[[`, numeric(1), "expected_direction")
+conclusion <- ifelse(
+  contrast_p_holm < 0.05 & sign(contrast_log_or) == expected_direction,
+  "direction-compatible evidence",
+  ifelse(
+    contrast_p_holm < 0.05 & sign(contrast_log_or) == -expected_direction,
+    "opposite",
+    "inconclusive"
+  )
+)
+
+hypothesis_results <- data.frame(
+  hypothesis = vapply(contrast_specs, `[[`, character(1), "hypothesis"),
+  variable = vapply(contrast_specs, `[[`, character(1), "variable"),
+  contrast = vapply(contrast_specs, `[[`, character(1), "contrast"),
+  OR = vapply(contrast_estimates, `[[`, numeric(1), "OR"),
+  lower = vapply(contrast_estimates, `[[`, numeric(1), "lower"),
+  upper = vapply(contrast_estimates, `[[`, numeric(1), "upper"),
+  p = contrast_p,
+  p_holm = contrast_p_holm,
+  conclusion = conclusion,
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+
+hypothesis_probability_differences <- data.frame(
+  hypothesis = hypothesis_results$hypothesis,
+  variable = hypothesis_results$variable,
+  contrast = hypothesis_results$contrast,
+  probability_difference = vapply(contrast_estimates, `[[`, numeric(1), "probability_difference"),
+  lower = vapply(contrast_estimates, `[[`, numeric(1), "probability_lower"),
+  upper = vapply(contrast_estimates, `[[`, numeric(1), "probability_upper"),
+  p = vapply(contrast_estimates, `[[`, numeric(1), "probability_p"),
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+
+hypothesis_display <- data.frame(
+  H = hypothesis_results$hypothesis,
+  Variable = hypothesis_results$variable,
+  Contrast = hypothesis_results$contrast,
+  OR_95CI = sprintf(
+    "%.3f [%.3f, %.3f]",
+    hypothesis_results$OR, hypothesis_results$lower, hypothesis_results$upper
+  ),
+  P = format.pval(hypothesis_results$p, digits = 3, eps = 0.001),
+  P_Holm = format.pval(hypothesis_results$p_holm, digits = 3, eps = 0.001),
+  Conclusion = c("direction-compatible evidence" = "Cùng hướng kỳ vọng",
+                 "opposite" = "Ngược hướng kỳ vọng",
+                 "inconclusive" = "Chưa đủ bằng chứng")[hypothesis_results$conclusion],
+  check.names = FALSE
+)
+probability_display <- data.frame(
+  H = hypothesis_probability_differences$hypothesis,
+  Variable = hypothesis_probability_differences$variable,
+  Contrast = hypothesis_probability_differences$contrast,
+  DeltaP_95CI = sprintf(
+    "%.3f [%.3f, %.3f]",
+    hypothesis_probability_differences$probability_difference,
+    hypothesis_probability_differences$lower,
+    hypothesis_probability_differences$upper
+  ),
+  P = format.pval(hypothesis_probability_differences$p, digits = 3, eps = 0.001),
+  check.names = FALSE
+)
+knitr::kable(hypothesis_display, digits = 4, caption = "OR tương phản cho H1--H8; Holm điều chỉnh tám p-value")
+knitr::kable(probability_display, digits = 4, caption = "Chênh lệch xác suất chuẩn hóa, delta method")
+```
+
+Khoảng delta cho chênh lệch xác suất là xấp xỉ tuyến tính và đôi khi có thể vượt biên logic $[-1,1]$; báo cáo không cắt biên để tránh che giấu mức bất định. Đối với H1--H5, tương phản Q25 $\rightarrow$ Q75 chỉ hỗ trợ phát biểu về hai mốc đó và **không** chứng minh quan hệ đơn điệu trên toàn miền. Tương tự, tương phản H6--H7 cần được đọc cùng kiểm định chung của toàn bộ nhân tố:
+
+```{r infer-joint-satisfaction-tests}
+joint_factor_names <- c("JobSatisfaction", "EnvironmentSatisfaction")
+joint_factor_tests <- term_lr_tests[term_lr_tests$Term %in% joint_factor_names, , drop = FALSE]
+if (!setequal(joint_factor_tests$Term, joint_factor_names)) {
+  abort_inference("Thiếu kiểm định LR chung cho JobSatisfaction hoặc EnvironmentSatisfaction.")
+}
+knitr::kable(joint_factor_tests, digits = 4, caption = "Kiểm định LR chung cho H6 và H7")
+```
+
+Có `r sum(hypothesis_results$conclusion == "direction-compatible evidence")` tương phản cho bằng chứng cùng hướng kỳ vọng sau Holm, `r sum(hypothesis_results$conclusion == "opposite")` tương phản cho bằng chứng ngược hướng, và `r sum(hypothesis_results$conclusion == "inconclusive")` tương phản chưa kết luận. Các nhãn này luôn phải đọc cùng OR, khoảng tin cậy và chênh lệch xác suất; “chưa kết luận” không phải chấp nhận giả thuyết không, còn một kết quả cùng hướng cũng không phải bằng chứng nhân quả hay bằng chứng “chấp nhận” giả thuyết nghiên cứu.
+
+## Đường xác suất điều chỉnh cho biến liên tục
+
+```{r infer-adjusted-probability-curves, fig.width=10, fig.height=10}
+adjusted_probability_curves <- do.call(rbind, lapply(numeric_vars, function(variable) {
+  observed_range <- range(data[[variable]])
+  grid <- unique(seq(observed_range[1L], observed_range[2L], length.out = 80L))
+  probability <- vapply(grid, function(value) {
+    changed <- replace_contrast_value(data, variable, value)
+    mean(predict(model_final, newdata = changed, type = "response"))
+  }, numeric(1))
+  data.frame(Variable = variable, Value = grid, Adjusted_probability = probability)
+}))
+curve_support <- stack(data[numeric_vars])
+names(curve_support) <- c("Value", "Variable")
+
+ggplot(adjusted_probability_curves, aes(x = Value, y = Adjusted_probability)) +
+  geom_line(linewidth = 0.8, colour = "#2C6E8F") +
+  geom_rug(
+    data = curve_support,
+    aes(x = Value),
+    inherit.aes = FALSE,
+    alpha = 0.08,
+    sides = "b"
+  ) +
+  facet_wrap(~Variable, scales = "free_x", ncol = 2) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 1)) +
+  labs(
+    x = NULL,
+    y = "Xác suất trung bình điều chỉnh",
+    title = "Xác suất nghỉ việc trung bình điều chỉnh",
+    subtitle = "Mỗi đường thay một biến trên miền quan sát và giữ phân phối thực nghiệm của các biến còn lại"
+  ) +
+  theme_minimal()
+```
+
+Các vạch rug biểu diễn hỗ trợ quan sát. Hình dạng ở vùng ít vạch dựa trên ít dữ liệu và phải được xem là không chắc chắn; đường cong chỉ mô tả mô hình trong miền đã quan sát, không biện minh cho ngoại suy hay diễn giải nhân quả.
+
+## Chẩn đoán độ ổn định và quan sát ảnh hưởng
+
+```{r infer-numerical-diagnostics}
+final_design <- model.matrix(model_final)
+final_standard_errors <- sqrt(diag(vcov(model_final)))
+final_fitted <- fitted(model_final)
+extreme_probability_count <- sum(final_fitted < 1e-6 | final_fitted > 1 - 1e-6)
+large_se_count <- sum(final_standard_errors > 10)
+final_diagnostics <- data.frame(
+  Converged = isTRUE(model_final$converged),
+  Finite_coefficients = all(is.finite(coef(model_final))),
+  Rank = model_final$rank,
+  Design_columns = ncol(final_design),
+  Full_rank = model_final$rank == ncol(final_design),
+  Max_SE = max(final_standard_errors),
+  Fitted_below_1e_6 = sum(final_fitted < 1e-6),
+  Fitted_above_1_minus_1e_6 = sum(final_fitted > 1 - 1e-6),
+  Heuristic_instability_flag = extreme_probability_count > 0L || large_se_count > 0L,
+  check.names = FALSE
+)
+final_diagnostics_display <- data.frame(
+  Metric = c(
+    "Converged", "Finite coefficients", "Rank", "Design columns", "Full rank",
+    "Maximum SE", "Fitted < 1e-6", "Fitted > 1 - 1e-6", "Heuristic instability flag"
+  ),
+  Value = c(
+    as.character(final_diagnostics$Converged),
+    as.character(final_diagnostics$Finite_coefficients),
+    as.character(final_diagnostics$Rank),
+    as.character(final_diagnostics$Design_columns),
+    as.character(final_diagnostics$Full_rank),
+    sprintf("%.4f", final_diagnostics$Max_SE),
+    as.character(final_diagnostics$Fitted_below_1e_6),
+    as.character(final_diagnostics$Fitted_above_1_minus_1e_6),
+    as.character(final_diagnostics$Heuristic_instability_flag)
+  ),
+  check.names = FALSE
+)
+knitr::kable(final_diagnostics_display, caption = "Chẩn đoán hội tụ, hạng và dấu hiệu bất ổn số")
+```
+
+Cờ bất ổn chỉ dựa trên xác suất dự báo cực trị và sai số chuẩn lớn; nó **không phải kiểm định chính thức** và không chứng minh có hay không có separation. Nếu cờ bật, các hệ số và khoảng Wald cần được xem đặc biệt thận trọng; nếu cờ không bật, separation vẫn không được loại trừ một cách hình thức.
+
+```{r infer-sparse-category-counts}
+diagnostic_factor_vars <- c(
+  "Gender", "MaritalStatus", "OverTime", "JobRole",
+  "JobSatisfaction", "EnvironmentSatisfaction"
+)
+sparse_category_counts <- do.call(rbind, lapply(diagnostic_factor_vars, function(variable) {
+  do.call(rbind, lapply(levels(data[[variable]]), function(level) {
+    in_level <- data[[variable]] == level
+    events <- sum(data$Attrition[in_level] == 1L)
+    non_events <- sum(data$Attrition[in_level] == 0L)
+    data.frame(
+      Variable = variable,
+      Level = level,
+      N = events + non_events,
+      Events = events,
+      Non_events = non_events,
+      Event_rate = events / (events + non_events),
+      Sparse_cell_lt_5 = events < 5L || non_events < 5L,
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+  }))
+}))
+knitr::kable(sparse_category_counts, digits = 4, caption = "Số biến cố và không biến cố theo từng mức phân loại")
+```
+
+Có `r sum(sparse_category_counts$Sparse_cell_lt_5)` mức phân loại có ít hơn 5 quan sát ở ít nhất một lớp kết quả. Các ô thưa có thể làm ước lượng kém ổn định ngay cả khi thuật toán báo hội tụ. Ngoài ra, dữ liệu là một lát cắt giả định và không cung cấp cấu trúc lấy mẫu hay cụm tổ chức; giả định độc lập giữa các quan sát **không thể kiểm chứng** từ bộ dữ liệu này.
+
+```{r infer-influence-summary}
+cook_distance <- cooks.distance(model_final)
+leverage <- hatvalues(model_final)
+deviance_residual <- residuals(model_final, type = "deviance")
+pearson_residual <- residuals(model_final, type = "pearson")
+if (any(!is.finite(cook_distance)) || any(!is.finite(leverage)) ||
+    any(!is.finite(deviance_residual)) || any(!is.finite(pearson_residual))) {
+  abort_inference("Chẩn đoán ảnh hưởng chứa giá trị không hữu hạn.")
+}
+
+summarize_diagnostic <- function(values, measure) {
+  descriptive <- c(
+    Min = min(values),
+    Q1 = unname(quantile(values, 0.25)),
+    Median = median(values),
+    Mean = mean(values),
+    Q3 = unname(quantile(values, 0.75)),
+    Max = max(values)
+  )
+  data.frame(Measure = measure, Statistic = names(descriptive), Value = as.numeric(descriptive))
+}
+influence_summary <- rbind(
+  summarize_diagnostic(cook_distance, "Cook_distance"),
+  summarize_diagnostic(leverage, "Leverage"),
+  summarize_diagnostic(deviance_residual, "Deviance_residual"),
+  summarize_diagnostic(pearson_residual, "Pearson_residual")
+)
+
+model_row_names <- rownames(model.frame(model_final))
+row_id <- match(model_row_names, rownames(data))
+if (anyNA(row_id)) row_id <- seq_along(cook_distance)
+influence_data <- data.frame(
+  Row_ID = row_id,
+  Cook_distance = as.numeric(cook_distance),
+  Leverage = as.numeric(leverage),
+  Deviance_residual = as.numeric(deviance_residual),
+  Pearson_residual = as.numeric(pearson_residual),
+  Fitted_probability = as.numeric(final_fitted),
+  check.names = FALSE
+)
+top_influence <- influence_data[order(influence_data$Cook_distance, decreasing = TRUE), , drop = FALSE]
+top_influence <- head(top_influence, 5L)
+
+knitr::kable(influence_summary, digits = 5, caption = "Tóm tắt Cook, leverage và phần dư")
+knitr::kable(top_influence, digits = 5, caption = "Năm dòng có Cook's distance lớn nhất")
+```
+
+Không thực hiện kiểm định chuẩn tính của phần dư vì đó không phải giả định của hồi quy logistic. Cook's distance và leverage chỉ nhận diện các quan sát đáng xem xét, không tự động biện minh cho việc xóa dữ liệu.
+
+```{r infer-cook-sensitivity}
+cook_threshold <- 4 / nrow(data)
+influential_rows <- cook_distance > cook_threshold
+influential_count <- sum(influential_rows)
+sensitivity_data <- data[!influential_rows, , drop = FALSE]
+if (influential_count > 0L) {
+  if (length(unique(sensitivity_data$Attrition)) != 2L) {
+    abort_inference("Loại tạm các dòng Cook > 4/n làm mất một lớp kết quả; không thể ước lượng độ nhạy.")
+  }
+  model_sensitivity <- fit_logit(formula(model_final), sensitivity_data, "mô hình độ nhạy Cook > 4/n")
+  validate_logit(model_sensitivity, "Mô hình độ nhạy Cook > 4/n", nrow(sensitivity_data))
+} else {
+  model_sensitivity <- model_final
+}
+
+sensitivity_contrasts <- lapply(contrast_specs, function(specification) {
+  compute_standardized_contrast(
+    model_sensitivity, sensitivity_data, specification$variable,
+    specification$low, specification$high
+  )
+})
+sensitivity_log_or <- vapply(sensitivity_contrasts, `[[`, numeric(1), "log_or")
+direction_label <- function(value) {
+  ifelse(value > 0, "Positive", ifelse(value < 0, "Negative", "Zero"))
+}
+sensitivity_comparison <- data.frame(
+  Hypothesis = hypothesis_results$hypothesis,
+  Variable = hypothesis_results$variable,
+  Contrast = hypothesis_results$contrast,
+  OR_full = hypothesis_results$OR,
+  Direction_full = direction_label(contrast_log_or),
+  OR_excluding_Cook = vapply(sensitivity_contrasts, `[[`, numeric(1), "OR"),
+  Direction_excluding_Cook = direction_label(sensitivity_log_or),
+  Same_direction = sign(contrast_log_or) == sign(sensitivity_log_or),
+  check.names = FALSE
+)
+knitr::kable(sensitivity_comparison, digits = 4, caption = "Độ nhạy hướng và OR khi loại tạm Cook > 4/n")
+```
+
+Ngưỡng mô tả $4/n$ gắn cờ `r influential_count` dòng. Phân tích độ nhạy chỉ loại các dòng này trong một bản sao dữ liệu; dữ liệu và mô hình chính không bị thay đổi. So sánh này có điều kiện trên một quy tắc ảnh hưởng hậu nghiệm, vì vậy không được dùng để chọn phiên bản tạo ra kết quả thuận lợi hơn.
+
+Trong phép phân tích này, `r sum(sensitivity_comparison$Same_direction)` trên 8 tương phản giữ cùng hướng. Tuy nhiên, OR tăng ca thay từ `r sprintf("%.2f", sensitivity_comparison$OR_full[sensitivity_comparison$Hypothesis == "H8"])` trong mẫu đầy đủ thành `r sprintf("%.2f", sensitivity_comparison$OR_excluding_Cook[sensitivity_comparison$Hypothesis == "H8"])` sau loại tạm. Vì lựa chọn quan sát theo Cook phụ thuộc phần dư/kết quả, sự thay đổi lớn có thể chịu thiên lệch chọn mẫu; không dùng nó để thay thế ước lượng chính hoặc tuyên bố độ lớn hiệu ứng bền vững.
+
+
+## Hiệu chuẩn biểu kiến trong mẫu
+
+```{r infer-apparent-calibration, fig.width=7, fig.height=5}
+calibration_group <- pmin(10L, ceiling(rank(final_fitted, ties.method = "first") * 10 / length(final_fitted)))
+apparent_calibration <- do.call(rbind, lapply(sort(unique(calibration_group)), function(group) {
+  in_group <- calibration_group == group
+  data.frame(
+    Decile = group,
+    N = sum(in_group),
+    Mean_predicted = mean(final_fitted[in_group]),
+    Observed_rate = mean(data$Attrition[in_group]),
+    check.names = FALSE
+  )
+}))
+
+knitr::kable(apparent_calibration, digits = 4, caption = "Hiệu chuẩn biểu kiến theo nhóm thập phân trên toàn mẫu")
+ggplot(apparent_calibration, aes(x = Mean_predicted, y = Observed_rate)) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", colour = "grey50") +
+  geom_line(colour = "#2C6E8F") +
+  geom_point(aes(size = N), colour = "#2C6E8F") +
+  coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(
+    x = "Xác suất dự đoán trung bình",
+    y = "Tỷ lệ nghỉ việc quan sát",
+    size = "N",
+    title = "Hiệu chuẩn biểu kiến trong mẫu",
+    subtitle = "Không phải đánh giá ngoài mẫu"
+  ) +
+  theme_minimal()
+```
+
+Đây là hiệu chuẩn **apparent** trên chính mẫu đã dùng để ước lượng và chọn dạng hàm, nên có thể lạc quan. Chương dự báo chịu trách nhiệm đánh giá trên dữ liệu giữ lại; phần này không dùng kết quả trong mẫu để tuyên bố khả năng dự báo ngoài mẫu.
+
+# Đánh giá dự đoán ngoài mẫu
+
+Phần này đánh giá khả năng dự đoán bằng một quy trình tách biệt với suy luận thống kê ở phần trước. Hai đặc tả ứng viên được so sánh chỉ trên tập huấn luyện: mô hình tuyến tính theo `formula_linear` và mô hình spline tự nhiên bậc tự do 2 theo `formula_spline`. Tập kiểm tra không tham gia chọn đặc tả hay chọn ngưỡng.
+
+```{r pred-setup, echo=FALSE}
+stop_prediction <- function(message) {
+  stop(message, call. = FALSE)
+}
+
+if (!exists("data", inherits = TRUE) || !is.data.frame(data)) {
+  stop_prediction("Đánh giá dự đoán cần đối tượng 'data' là một data.frame.")
+}
+if (!exists("formula_linear", inherits = TRUE) ||
+    !inherits(formula_linear, "formula")) {
+  stop_prediction("Thiếu công thức hợp lệ 'formula_linear'.")
+}
+if (!exists("formula_spline", inherits = TRUE) ||
+    !inherits(formula_spline, "formula")) {
+  stop_prediction("Thiếu công thức hợp lệ 'formula_spline'.")
+}
+if (nrow(data) != 1470L) {
+  stop_prediction("Dữ liệu dự đoán phải giữ nguyên 1.470 quan sát.")
+}
+
+validate_prediction_formula <- function(model_formula, formula_name) {
+  response_variables <- all.vars(model_formula[[2L]])
+  if (!identical(response_variables, "Attrition")) {
+    stop_prediction(sprintf("%s phải có biến kết quả Attrition.", formula_name))
+  }
+  missing_variables <- setdiff(all.vars(model_formula), names(data))
+  if (length(missing_variables) > 0L) {
+    stop_prediction(sprintf(
+      "%s tham chiếu biến không có trong dữ liệu: %s.",
+      formula_name,
+      paste(missing_variables, collapse = ", ")
+    ))
+  }
+}
+validate_prediction_formula(formula_linear, "formula_linear")
+validate_prediction_formula(formula_spline, "formula_spline")
+
+required_variables <- unique(c(all.vars(formula_linear), all.vars(formula_spline)))
+if (anyNA(data[required_variables])) {
+  stop_prediction("Các biến dùng cho dự đoán không được chứa giá trị thiếu.")
+}
+if (!is.integer(data$Attrition) ||
+    !identical(sort(unique(data$Attrition)), c(0L, 1L))) {
+  stop_prediction("Attrition phải là biến số nguyên nhị phân 0/1 và có đủ hai lớp.")
+}
+
+continuous_variables <- c(
+  "Age", "MonthlyIncome", "TotalWorkingYears", "YearsAtCompany",
+  "YearsInCurrentRole", "YearsWithCurrManager", "DistanceFromHome"
+)
+for (variable in continuous_variables) {
+  if (!is.numeric(data[[variable]]) || any(!is.finite(data[[variable]]))) {
+    stop_prediction(sprintf("%s phải là biến số hữu hạn.", variable))
+  }
+}
+
+expected_factor_levels <- list(
+  Gender = c("Female", "Male"),
+  MaritalStatus = c("Married", "Divorced", "Single"),
+  OverTime = c("No", "Yes"),
+  JobSatisfaction = c("1", "2", "3", "4"),
+  EnvironmentSatisfaction = c("1", "2", "3", "4")
+)
+for (variable in names(expected_factor_levels)) {
+  if (!is.factor(data[[variable]]) ||
+      !identical(levels(data[[variable]]), expected_factor_levels[[variable]])) {
+    stop_prediction(sprintf("Thứ tự mức của %s không đúng đặc tả.", variable))
+  }
+}
+if (!is.factor(data$JobRole)) {
+  stop_prediction("JobRole phải là biến factor.")
+}
+job_role_levels <- levels(data$JobRole)
+if (length(job_role_levels) < 2L ||
+    job_role_levels[[1L]] != "Healthcare Representative" ||
+    !identical(job_role_levels[-1L], sort(job_role_levels[-1L]))) {
+  stop_prediction("JobRole phải có mức chuẩn Healthcare Representative và các mức còn lại theo thứ tự chữ cái.")
+}
+for (variable in c(names(expected_factor_levels), "JobRole")) {
+  if (any(table(data[[variable]]) == 0L)) {
+    stop_prediction(sprintf("%s có mức factor không có quan sát.", variable))
+  }
+}
+
+clip_probability <- function(probability) {
+  epsilon <- 1e-15
+  pmin(pmax(probability, epsilon), 1 - epsilon)
+}
+
+format_number <- function(value, digits = 3L) {
+  if (length(value) != 1L || is.na(value)) {
+    return("không xác định")
+  }
+  formatC(value, format = "f", digits = digits, decimal.mark = ",")
+}
+
+format_percent <- function(value, digits = 1L) {
+  if (length(value) != 1L || is.na(value)) {
+    return("không xác định")
+  }
+  paste0(formatC(100 * value, format = "f", digits = digits, decimal.mark = ","), "%")
+}
+
+log_loss <- function(actual, probability) {
+  if (length(actual) != length(probability) ||
+      any(!is.finite(probability)) ||
+      any(probability < 0 | probability > 1)) {
+    stop_prediction("Không thể tính log-loss từ xác suất không hợp lệ.")
+  }
+  bounded_probability <- clip_probability(probability)
+  -mean(actual * log(bounded_probability) +
+          (1 - actual) * log1p(-bounded_probability))
+}
+
+roc_auc_rank <- function(actual, probability) {
+  positive_count <- sum(actual == 1L)
+  negative_count <- sum(actual == 0L)
+  if (positive_count == 0L || negative_count == 0L) {
+    return(NA_real_)
+  }
+  probability_ranks <- rank(probability, ties.method = "average")
+  (sum(probability_ranks[actual == 1L]) -
+     positive_count * (positive_count + 1) / 2) /
+    (positive_count * negative_count)
+}
+
+score_curve_counts <- function(actual, probability) {
+  order_index <- order(probability, decreasing = TRUE)
+  ordered_probability <- probability[order_index]
+  ordered_actual <- actual[order_index]
+  group_ends <- c(which(diff(ordered_probability) != 0), length(ordered_probability))
+  data.frame(
+    threshold = ordered_probability[group_ends],
+    true_positive = cumsum(ordered_actual == 1L)[group_ends],
+    false_positive = cumsum(ordered_actual == 0L)[group_ends]
+  )
+}
+
+average_precision <- function(actual, probability) {
+  positive_count <- sum(actual == 1L)
+  if (positive_count == 0L) {
+    return(NA_real_)
+  }
+  grouped_counts <- score_curve_counts(actual, probability)
+  recall <- grouped_counts$true_positive / positive_count
+  precision <- grouped_counts$true_positive /
+    (grouped_counts$true_positive + grouped_counts$false_positive)
+  sum(diff(c(0, recall)) * precision)
+}
+
+brier_score <- function(actual, probability) {
+  mean((actual - probability)^2)
+}
+
+confusion_counts <- function(actual, predicted) {
+  c(
+    true_negative = sum(actual == 0L & predicted == 0L),
+    false_positive = sum(actual == 0L & predicted == 1L),
+    false_negative = sum(actual == 1L & predicted == 0L),
+    true_positive = sum(actual == 1L & predicted == 1L)
+  )
+}
+
+classification_metrics <- function(actual, predicted) {
+  counts <- confusion_counts(actual, predicted)
+  total <- sum(counts)
+  predicted_positive <- counts[["true_positive"]] + counts[["false_positive"]]
+  actual_positive <- counts[["true_positive"]] + counts[["false_negative"]]
+  actual_negative <- counts[["true_negative"]] + counts[["false_positive"]]
+
+  precision <- if (predicted_positive > 0L) {
+    counts[["true_positive"]] / predicted_positive
+  } else {
+    NA_real_
+  }
+  recall <- if (actual_positive > 0L) {
+    counts[["true_positive"]] / actual_positive
+  } else {
+    NA_real_
+  }
+  specificity <- if (actual_negative > 0L) {
+    counts[["true_negative"]] / actual_negative
+  } else {
+    NA_real_
+  }
+  f1_denominator <- 2 * counts[["true_positive"]] +
+    counts[["false_positive"]] + counts[["false_negative"]]
+  f1 <- if (f1_denominator > 0L) {
+    2 * counts[["true_positive"]] / f1_denominator
+  } else {
+    NA_real_
+  }
+
+  c(
+    accuracy = (counts[["true_positive"]] + counts[["true_negative"]]) / total,
+    precision = precision,
+    recall = recall,
+    specificity = specificity,
+    f1 = f1
+  )
+}
+```
+
+## Thiết kế thẩm định nội bộ
+
+Với hạt giống cố định 20261108, dữ liệu được chia phân tầng theo `Attrition`: 80% cho huấn luyện và 20% cho kiểm tra. Năm fold phân tầng được tạo tiếp chỉ bên trong tập huấn luyện. Trong từng fold, mỗi mô hình được ước lượng lại từ đầu; vì vậy các knot và knot biên của `splines::ns()` chỉ được học từ phần huấn luyện của fold đó. Khi dự đoán nằm ngoài knot biên, `ns()` thực hiện ngoại suy tuyến tính tự nhiên như thiết kế; cảnh báo từ khâu ước lượng hay dự đoán không bị che giấu.
+
+```{r pred-split-folds, echo=FALSE}
+stratified_training_indices <- function(actual, proportion) {
+  selected <- unlist(lapply(sort(unique(actual)), function(class_value) {
+    class_indices <- which(actual == class_value)
+    training_count <- floor(length(class_indices) * proportion)
+    if (training_count < 1L || training_count >= length(class_indices)) {
+      stop_prediction("Không thể tạo phép chia phân tầng có đủ hai lớp ở cả hai tập.")
+    }
+    sample(class_indices, size = training_count, replace = FALSE)
+  }), use.names = FALSE)
+  sort(selected)
+}
+
+stratified_folds <- function(actual, fold_count) {
+  class_counts <- table(actual)
+  if (any(class_counts < fold_count)) {
+    stop_prediction("Mỗi lớp phải có ít nhất năm quan sát để tạo năm fold phân tầng.")
+  }
+  fold_id <- integer(length(actual))
+  for (class_value in sort(unique(actual))) {
+    class_indices <- which(actual == class_value)
+    allocated_folds <- rep(seq_len(fold_count), length.out = length(class_indices))
+    fold_id[class_indices] <- sample(allocated_folds, replace = FALSE)
+  }
+  fold_id
+}
+
+set.seed(20261108)
+training_indices <- stratified_training_indices(data$Attrition, 0.80)
+test_indices <- setdiff(seq_len(nrow(data)), training_indices)
+training_data <- data[training_indices, , drop = FALSE]
+test_data <- data[test_indices, , drop = FALSE]
+fold_id <- stratified_folds(training_data$Attrition, 5L)
+
+if (!all(vapply(seq_len(5L), function(fold) {
+  length(unique(training_data$Attrition[fold_id == fold])) == 2L
+}, logical(1)))) {
+  stop_prediction("Ít nhất một fold thẩm định không có đủ hai lớp Attrition.")
+}
+```
+
+```{r pred-fit-helpers, echo=FALSE}
+factor_variables_in_formula <- function(model_formula, frame) {
+  formula_variables <- setdiff(all.vars(model_formula), "Attrition")
+  formula_variables[vapply(frame[formula_variables], is.factor, logical(1))]
+}
+
+guard_unseen_levels <- function(training_frame, new_frame, model_formula, context) {
+  factor_variables <- factor_variables_in_formula(model_formula, training_frame)
+  for (variable in factor_variables) {
+    observed_training_levels <- unique(as.character(training_frame[[variable]]))
+    observed_new_levels <- unique(as.character(new_frame[[variable]]))
+    unseen_levels <- setdiff(observed_new_levels, observed_training_levels)
+    if (length(unseen_levels) > 0L) {
+      stop_prediction(sprintf(
+        "%s có mức mới của %s chưa xuất hiện trong dữ liệu ước lượng: %s.",
+        context,
+        variable,
+        paste(unseen_levels, collapse = ", ")
+      ))
+    }
+  }
+}
+
+fit_validated_logit <- function(model_formula, training_frame, context) {
+  if (length(unique(training_frame$Attrition)) != 2L) {
+    stop_prediction(sprintf("%s không có đủ hai lớp Attrition.", context))
+  }
+  local_training_frame <- droplevels(training_frame)
+  fitted_model <- glm(
+    formula = model_formula,
+    data = local_training_frame,
+    family = binomial(link = "logit"),
+    na.action = na.fail
+  )
+  fitted_coefficients <- coef(fitted_model)
+  if (!isTRUE(fitted_model$converged)) {
+    stop_prediction(sprintf("%s không hội tụ.", context))
+  }
+  if (length(fitted_coefficients) == 0L ||
+      anyNA(fitted_coefficients) ||
+      any(!is.finite(fitted_coefficients))) {
+    stop_prediction(sprintf("%s có hệ số không ước lượng được hoặc không hữu hạn.", context))
+  }
+  if (!is.finite(fitted_model$deviance) || fitted_model$df.residual <= 0L) {
+    stop_prediction(sprintf("%s không tạo ra một nghiệm GLM hợp lệ.", context))
+  }
+  fitted_model
+}
+
+predict_validated_probability <- function(fitted_model, new_frame, context) {
+  predicted_probability <- as.numeric(predict(
+    fitted_model,
+    newdata = new_frame,
+    type = "response"
+  ))
+  if (length(predicted_probability) != nrow(new_frame) ||
+      anyNA(predicted_probability) ||
+      any(!is.finite(predicted_probability)) ||
+      any(predicted_probability < 0 | predicted_probability > 1)) {
+    stop_prediction(sprintf("%s tạo ra xác suất dự đoán không hợp lệ.", context))
+  }
+  predicted_probability
+}
+```
+
+## Chọn đặc tả hoàn toàn trong tập huấn luyện
+
+Log-loss ngoài fold được tính cho từng quan sát đúng một lần. Log-loss trung bình thấp nhất quyết định đặc tả thắng; nếu bằng nhau trong sai số số học, đặc tả tuyến tính đơn giản hơn được ưu tiên. Không có kết quả nào từ tập kiểm tra tham gia quyết định này.
+
+```{r pred-oof-candidates, echo=FALSE}
+candidate_specs <- list(
+  linear = list(label = "Tuyến tính", formula = formula_linear),
+  spline_df2 = list(label = "Spline tự nhiên (df = 2)", formula = formula_spline)
+)
+
+oof_predictions <- matrix(
+  NA_real_,
+  nrow = nrow(training_data),
+  ncol = length(candidate_specs),
+  dimnames = list(NULL, names(candidate_specs))
+)
+fold_score_rows <- vector("list", length(candidate_specs) * 5L)
+score_row <- 1L
+
+for (fold in seq_len(5L)) {
+  fold_validation <- fold_id == fold
+  fold_training <- !fold_validation
+  for (candidate_name in names(candidate_specs)) {
+    candidate <- candidate_specs[[candidate_name]]
+    context <- sprintf("Ứng viên %s, fold %d", candidate$label, fold)
+    guard_unseen_levels(
+      training_data[fold_training, , drop = FALSE],
+      training_data[fold_validation, , drop = FALSE],
+      candidate$formula,
+      context
+    )
+    fold_model <- fit_validated_logit(
+      candidate$formula,
+      training_data[fold_training, , drop = FALSE],
+      context
+    )
+    fold_probability <- predict_validated_probability(
+      fold_model,
+      training_data[fold_validation, , drop = FALSE],
+      context
+    )
+    oof_predictions[fold_validation, candidate_name] <- fold_probability
+    fold_score_rows[[score_row]] <- data.frame(
+      candidate = candidate_name,
+      fold = fold,
+      log_loss = log_loss(
+        training_data$Attrition[fold_validation],
+        fold_probability
+      )
+    )
+    score_row <- score_row + 1L
+  }
+}
+if (anyNA(oof_predictions)) {
+  stop_prediction("Xác suất ngoài fold chưa phủ hết tập huấn luyện.")
+}
+
+fold_candidate_scores <- do.call(rbind, fold_score_rows)
+training_candidate_scores <- data.frame(
+  candidate = names(candidate_specs),
+  label = vapply(candidate_specs, `[[`, character(1), "label"),
+  mean_oof_log_loss = vapply(names(candidate_specs), function(candidate_name) {
+    log_loss(training_data$Attrition, oof_predictions[, candidate_name])
+  }, numeric(1)),
+  sd_fold_log_loss = vapply(names(candidate_specs), function(candidate_name) {
+    sd(fold_candidate_scores$log_loss[
+      fold_candidate_scores$candidate == candidate_name
+    ])
+  }, numeric(1)),
+  stringsAsFactors = FALSE
+)
+
+best_oof_score <- min(training_candidate_scores$mean_oof_log_loss)
+best_candidates <- which(
+  abs(training_candidate_scores$mean_oof_log_loss - best_oof_score) <=
+    sqrt(.Machine$double.eps)
+)
+selected_candidate_index <- best_candidates[[1L]]
+selected_candidate_name <- training_candidate_scores$candidate[[selected_candidate_index]]
+selected_oof_probability <- oof_predictions[, selected_candidate_name]
+
+candidate_table <- training_candidate_scores
+colnames(candidate_table) <- c(
+  "Mã đặc tả", "Đặc tả", "Log-loss OOF trung bình", "Độ lệch chuẩn log-loss giữa fold"
+)
+knitr::kable(
+  candidate_table,
+  digits = 4,
+  caption = "So sánh hai đặc tả bằng dự đoán ngoài fold trên tập huấn luyện"
+)
+```
+
+Đặc tả được chọn là **`r candidate_specs[[selected_candidate_name]]$label`**, với log-loss OOF trung bình `r format_number(best_oof_score, 4)`.
+
+## Chọn ngưỡng trên dự đoán ngoài fold
+
+Ngưỡng được khóa bằng cách tối đa hóa chỉ số Youden \(J=\text{độ nhạy}+\text{độ đặc hiệu}-1\) trên xác suất OOF của đặc tả thắng. Quy tắc này coi độ nhạy và độ đặc hiệu quan trọng như nhau; nó **không** phải ngưỡng tối ưu cho chi phí kinh doanh. Khi nhiều ngưỡng cho cùng \(J\), quy trình cố định chọn ngưỡng gần 0,5 nhất.
+
+```{r pred-threshold-selection, echo=FALSE}
+threshold_performance <- function(actual, probability, threshold) {
+  predicted <- as.integer(probability >= threshold)
+  counts <- confusion_counts(actual, predicted)
+  positive_count <- counts[["true_positive"]] + counts[["false_negative"]]
+  negative_count <- counts[["true_negative"]] + counts[["false_positive"]]
+  sensitivity <- if (positive_count > 0L) {
+    counts[["true_positive"]] / positive_count
+  } else {
+    NA_real_
+  }
+  specificity <- if (negative_count > 0L) {
+    counts[["true_negative"]] / negative_count
+  } else {
+    NA_real_
+  }
+  c(
+    sensitivity = sensitivity,
+    specificity = specificity,
+    youden_j = sensitivity + specificity - 1
+  )
+}
+
+select_youden_threshold <- function(actual, probability) {
+  candidate_thresholds <- c(Inf, sort(unique(probability), decreasing = TRUE))
+  performance <- t(vapply(candidate_thresholds, function(threshold) {
+    threshold_performance(actual, probability, threshold)
+  }, numeric(3)))
+  maximum_youden <- max(performance[, "youden_j"])
+  tied_indices <- which(
+    abs(performance[, "youden_j"] - maximum_youden) <= sqrt(.Machine$double.eps)
+  )
+  tie_order <- order(
+    abs(candidate_thresholds[tied_indices] - 0.5),
+    candidate_thresholds[tied_indices]
+  )
+  selected_index <- tied_indices[tie_order[[1L]]]
+  list(
+    threshold = candidate_thresholds[[selected_index]],
+    sensitivity = performance[selected_index, "sensitivity"],
+    specificity = performance[selected_index, "specificity"],
+    youden_j = performance[selected_index, "youden_j"]
+  )
+}
+
+selected_threshold_details <- select_youden_threshold(
+  training_data$Attrition,
+  selected_oof_probability
+)
+selected_threshold <- selected_threshold_details$threshold
+
+comparison_thresholds <- c(selected_threshold, 0.5)
+threshold_training_comparison <- do.call(rbind, lapply(seq_along(comparison_thresholds), function(index) {
+  threshold <- comparison_thresholds[[index]]
+  classification <- classification_metrics(
+    training_data$Attrition,
+    as.integer(selected_oof_probability >= threshold)
+  )
+  threshold_stats <- threshold_performance(
+    training_data$Attrition,
+    selected_oof_probability,
+    threshold
+  )
+  data.frame(
+    rule = c("Youden J", "Ngưỡng 0,5")[[index]],
+    threshold = threshold,
+    sensitivity = threshold_stats[["sensitivity"]],
+    specificity = threshold_stats[["specificity"]],
+    youden_j = threshold_stats[["youden_j"]],
+    accuracy = classification[["accuracy"]],
+    precision = classification[["precision"]],
+    f1 = classification[["f1"]]
+  )
+}))
+
+threshold_table <- threshold_training_comparison
+colnames(threshold_table) <- c(
+  "Quy tắc", "Ngưỡng", "Độ nhạy", "Độ đặc hiệu", "Youden J",
+  "Độ chính xác", "Precision", "F1"
+)
+knitr::kable(
+  threshold_table,
+  digits = 3,
+  caption = "So sánh ngưỡng bằng dự đoán OOF trên tập huấn luyện"
+)
+```
+
+Ngưỡng Youden được khóa ở **`r format_number(selected_threshold, 3)`**; trên dự đoán OOF, độ nhạy là `r format_percent(selected_threshold_details$sensitivity)` và độ đặc hiệu là `r format_percent(selected_threshold_details$specificity)`. Mọi đánh giá tiếp theo giữ nguyên đặc tả và ngưỡng này.
+
+## Đánh giá duy nhất trên tập kiểm tra
+
+Đặc tả thắng được ước lượng lại một lần chỉ bằng tập huấn luyện. Trước dự đoán, quy trình kiểm tra rõ ràng rằng tập kiểm tra không chứa mức factor chưa thấy trong tập huấn luyện. Sau đó xác suất cho tập kiểm tra được tạo đúng một lần.
+
+```{r pred-final-fit-test, echo=FALSE}
+selected_formula <- candidate_specs[[selected_candidate_name]]$formula
+guard_unseen_levels(
+  training_data,
+  test_data,
+  selected_formula,
+  "Tập kiểm tra"
+)
+prediction_model_train <- fit_validated_logit(
+  selected_formula,
+  training_data,
+  "Mô hình dự đoán cuối trên tập huấn luyện"
+)
+test_probability <- predict_validated_probability(
+  prediction_model_train,
+  test_data,
+  "Dự đoán tập kiểm tra"
+)
+test_actual <- test_data$Attrition
+training_prevalence <- mean(training_data$Attrition)
+baseline_probability <- rep(training_prevalence, length(test_actual))
+
+metric_row <- function(strategy, threshold_rule, threshold, actual, probability, predicted) {
+  classification <- classification_metrics(actual, predicted)
+  data.frame(
+    strategy = strategy,
+    threshold_rule = threshold_rule,
+    threshold = threshold,
+    roc_auc = roc_auc_rank(actual, probability),
+    average_precision = average_precision(actual, probability),
+    brier = brier_score(actual, probability),
+    log_loss = log_loss(actual, probability),
+    accuracy = classification[["accuracy"]],
+    precision = classification[["precision"]],
+    recall = classification[["recall"]],
+    specificity = classification[["specificity"]],
+    f1 = classification[["f1"]],
+    stringsAsFactors = FALSE
+  )
+}
+
+prediction_metrics <- rbind(
+  metric_row(
+    "selected_youden", "youden_oof_locked", selected_threshold,
+    test_actual, test_probability,
+    as.integer(test_probability >= selected_threshold)
+  ),
+  metric_row(
+    "selected_0.5", "fixed_0.5", 0.5,
+    test_actual, test_probability,
+    as.integer(test_probability >= 0.5)
+  ),
+  metric_row(
+    "baseline_always_no", "always_no_locked", NA_real_,
+    test_actual, baseline_probability,
+    rep(0L, length(test_actual))
+  )
+)
+
+confusion_row <- function(strategy, actual, predicted) {
+  counts <- confusion_counts(actual, predicted)
+  data.frame(
+    strategy = strategy,
+    true_negative = counts[["true_negative"]],
+    false_positive = counts[["false_positive"]],
+    false_negative = counts[["false_negative"]],
+    true_positive = counts[["true_positive"]],
+    stringsAsFactors = FALSE
+  )
+}
+confusion_test <- rbind(
+  confusion_row(
+    "selected_youden", test_actual,
+    as.integer(test_probability >= selected_threshold)
+  ),
+  confusion_row(
+    "selected_0.5", test_actual,
+    as.integer(test_probability >= 0.5)
+  ),
+  confusion_row(
+    "baseline_always_no", test_actual,
+    rep(0L, length(test_actual))
+  )
+)
+
+selected_metric_row <- prediction_metrics[
+  prediction_metrics$strategy == "selected_youden", , drop = FALSE
+]
+test_summary <- data.frame(
+  selected_candidate = selected_candidate_name,
+  selected_label = candidate_specs[[selected_candidate_name]]$label,
+  training_n = nrow(training_data),
+  test_n = nrow(test_data),
+  training_prevalence = training_prevalence,
+  test_prevalence = mean(test_actual),
+  selected_threshold = selected_threshold,
+  selected_oof_log_loss = best_oof_score,
+  test_roc_auc = selected_metric_row$roc_auc,
+  test_average_precision = selected_metric_row$average_precision,
+  test_brier = selected_metric_row$brier,
+  test_log_loss = selected_metric_row$log_loss,
+  stringsAsFactors = FALSE
+)
+
+chosen_prediction_spec <- list(
+  name = selected_candidate_name,
+  label = candidate_specs[[selected_candidate_name]]$label,
+  formula = selected_formula,
+  selection_metric = "mean_oof_log_loss",
+  mean_oof_log_loss = best_oof_score
+)
+
+split_table <- data.frame(
+  sample = c("Huấn luyện", "Kiểm tra"),
+  no = c(sum(training_data$Attrition == 0L), sum(test_actual == 0L)),
+  yes = c(sum(training_data$Attrition == 1L), sum(test_actual == 1L)),
+  total = c(nrow(training_data), nrow(test_data)),
+  attrition_rate = c(training_prevalence, mean(test_actual))
+)
+colnames(split_table) <- c("Mẫu", "Không nghỉ việc", "Nghỉ việc", "Tổng", "Tỷ lệ nghỉ việc")
+knitr::kable(
+  split_table,
+  digits = 3,
+  caption = "Cấu trúc lớp của phép chia phân tầng cố định"
+)
+
+metrics_table <- prediction_metrics
+metrics_table$strategy <- c(
+  "Mô hình chọn — ngưỡng Youden",
+  "Mô hình chọn — ngưỡng 0,5",
+  "Cơ sở — luôn dự đoán Không"
+)
+metrics_table$threshold_rule <- NULL
+colnames(metrics_table) <- c(
+  "Chiến lược", "Ngưỡng", "ROC-AUC", "AP", "Brier", "Log-loss",
+  "Độ chính xác", "Precision", "Recall", "Độ đặc hiệu", "F1"
+)
+knitr::kable(
+  metrics_table,
+  digits = 3,
+  caption = "Hiệu năng trên tập kiểm tra chưa dùng để tinh chỉnh"
+)
+
+confusion_table <- confusion_test
+confusion_table$strategy <- c(
+  "Mô hình chọn — ngưỡng Youden",
+  "Mô hình chọn — ngưỡng 0,5",
+  "Cơ sở — luôn dự đoán Không"
+)
+colnames(confusion_table) <- c(
+  "Chiến lược", "Đúng Không", "Sai Có", "Sai Không", "Đúng Có"
+)
+knitr::kable(
+  confusion_table,
+  caption = "Ma trận nhầm lẫn trên tập kiểm tra (trình bày theo bốn ô)"
+)
+```
+
+Trên tập kiểm tra, mô hình đã chọn đạt ROC-AUC **`r format_number(selected_metric_row$roc_auc)`**, AP **`r format_number(selected_metric_row$average_precision)`**, Brier **`r format_number(selected_metric_row$brier)`** và log-loss **`r format_number(selected_metric_row$log_loss)`**. AP ở đây là **average precision**: tích phân bậc thang theo mức tăng recall sau khi gom các xác suất bằng nhau, không phải diện tích PR theo quy tắc hình thang. ROC-AUC dùng công thức hạng với hạng trung bình cho ties.
+
+Mô hình cơ sở luôn dự đoán “Không nghỉ việc”, đồng thời gán cho mọi người xác suất bằng tỷ lệ nghỉ việc của **tập huấn luyện** (`r format_percent(training_prevalence)`). Vì dữ liệu mất cân bằng, chiến lược này vẫn có độ chính xác `r format_percent(prediction_metrics$accuracy[prediction_metrics$strategy == "baseline_always_no"])`; do đó không nên diễn giải accuracy riêng lẻ. Với xác suất hằng, ROC-AUC bằng 0,5 và AP bằng tỷ lệ dương của tập kiểm tra. Precision của quyết định “luôn Không” là `NA` vì không có dự đoán dương; F1 bằng 0 theo công thức đếm $2TP/(2TP+FP+FN)$ khi có ca dương bị bỏ sót. F1 chỉ không xác định khi mẫu số này bằng 0.
+
+## Đường ROC và precision–recall
+
+```{r pred-curves-data, echo=FALSE}
+roc_curve_points <- function(actual, probability) {
+  positive_count <- sum(actual == 1L)
+  negative_count <- sum(actual == 0L)
+  if (positive_count == 0L || negative_count == 0L) {
+    stop_prediction("Đường ROC cần đủ cả hai lớp trong tập kiểm tra.")
+  }
+  grouped_counts <- score_curve_counts(actual, probability)
+  data.frame(
+    false_positive_rate = c(0, grouped_counts$false_positive / negative_count),
+    true_positive_rate = c(0, grouped_counts$true_positive / positive_count)
+  )
+}
+
+pr_curve_points <- function(actual, probability) {
+  positive_count <- sum(actual == 1L)
+  if (positive_count == 0L) {
+    stop_prediction("Đường precision–recall cần ít nhất một ca nghỉ việc.")
+  }
+  grouped_counts <- score_curve_counts(actual, probability)
+  data.frame(
+    recall = c(0, grouped_counts$true_positive / positive_count),
+    precision = c(
+      1,
+      grouped_counts$true_positive /
+        (grouped_counts$true_positive + grouped_counts$false_positive)
+    )
+  )
+}
+
+roc_test_curve <- roc_curve_points(test_actual, test_probability)
+pr_test_curve <- pr_curve_points(test_actual, test_probability)
+```
+
+```{r pred-roc-plot, echo=FALSE, fig.width=6.5, fig.height=5, fig.cap="Đường ROC trên tập kiểm tra"}
+ggplot2::ggplot(
+  roc_test_curve,
+  ggplot2::aes(x = false_positive_rate, y = true_positive_rate)
+) +
+  ggplot2::geom_abline(
+    intercept = 0, slope = 1, linetype = "dashed", color = "grey55"
+  ) +
+  ggplot2::geom_step(color = "#1F5A94", linewidth = 0.9) +
+  ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
+  ggplot2::labs(
+    title = "Khả năng phân biệt trên tập kiểm tra",
+    subtitle = paste0("ROC-AUC = ", format_number(selected_metric_row$roc_auc)),
+    x = "Tỷ lệ dương giả (1 − độ đặc hiệu)",
+    y = "Tỷ lệ dương thật (độ nhạy)"
+  ) +
+  ggplot2::theme_minimal(base_size = 11)
+```
+
+```{r pred-pr-plot, echo=FALSE, fig.width=6.5, fig.height=5, fig.cap="Đường precision–recall trên tập kiểm tra"}
+ggplot2::ggplot(
+  pr_test_curve,
+  ggplot2::aes(x = recall, y = precision)
+) +
+  ggplot2::geom_hline(
+    yintercept = mean(test_actual), linetype = "dashed", color = "grey55"
+  ) +
+  ggplot2::geom_step(direction = "vh", color = "#A23B3B", linewidth = 0.9) +
+  ggplot2::coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
+  ggplot2::labs(
+    title = "Precision–recall trên tập kiểm tra",
+    subtitle = paste0(
+      "AP = ", format_number(selected_metric_row$average_precision),
+      "; đường đứt là tỷ lệ nghỉ việc"
+    ),
+    x = "Recall (độ nhạy)",
+    y = "Precision"
+  ) +
+  ggplot2::theme_minimal(base_size = 11)
+```
+
+## Độ hiệu chỉnh xác suất
+
+Các nhóm dưới đây là mười nhóm gần bằng nhau theo thứ tự xác suất dự đoán. Khoảng tin cậy Wilson 95% mô tả bất định của tỷ lệ nghỉ việc quan sát trong từng nhóm. Đường chéo là hiệu chỉnh lý tưởng, không phải mô hình được ước lượng lại.
+
+```{r pred-calibration, echo=FALSE}
+wilson_interval <- function(successes, total, confidence = 0.95) {
+  if (total <= 0L) {
+    return(c(lower = NA_real_, upper = NA_real_))
+  }
+  z_value <- qnorm(1 - (1 - confidence) / 2)
+  proportion <- successes / total
+  denominator <- 1 + z_value^2 / total
+  center <- (proportion + z_value^2 / (2 * total)) / denominator
+  half_width <- z_value * sqrt(
+    proportion * (1 - proportion) / total + z_value^2 / (4 * total^2)
+  ) / denominator
+  c(lower = max(0, center - half_width), upper = min(1, center + half_width))
+}
+
+calibration_deciles <- function(actual, probability, group_count = 10L) {
+  observation_count <- length(actual)
+  ordered_indices <- order(probability, seq_along(probability))
+  group <- integer(observation_count)
+  group[ordered_indices] <- pmin(
+    group_count,
+    ceiling(seq_len(observation_count) * group_count / observation_count)
+  )
+  rows <- lapply(seq_len(group_count), function(group_number) {
+    in_group <- group == group_number
+    group_total <- sum(in_group)
+    group_successes <- sum(actual[in_group] == 1L)
+    interval <- wilson_interval(group_successes, group_total)
+    data.frame(
+      decile = group_number,
+      n = group_total,
+      mean_predicted = mean(probability[in_group]),
+      observed_rate = group_successes / group_total,
+      lower_95 = interval[["lower"]],
+      upper_95 = interval[["upper"]]
+    )
+  })
+  do.call(rbind, rows)
+}
+
+test_calibration_deciles <- calibration_deciles(test_actual, test_probability)
+
+calibration_frame <- data.frame(
+  actual = test_actual,
+  linear_predictor = qlogis(clip_probability(test_probability))
+)
+calibration_model <- glm(
+  actual ~ linear_predictor,
+  data = calibration_frame,
+  family = binomial(link = "logit"),
+  na.action = na.fail
+)
+calibration_coefficients <- coef(calibration_model)
+calibration_covariance <- vcov(calibration_model)
+if (!isTRUE(calibration_model$converged) ||
+    anyNA(calibration_coefficients) ||
+    any(!is.finite(calibration_coefficients)) ||
+    any(!is.finite(calibration_covariance))) {
+  stop_prediction("Không thể ước lượng hợp lệ intercept/slope hiệu chỉnh trên tập kiểm tra.")
+}
+calibration_standard_error <- sqrt(diag(calibration_covariance))
+calibration_parameters <- data.frame(
+  parameter = c("intercept", "slope"),
+  estimate = unname(calibration_coefficients),
+  standard_error = unname(calibration_standard_error),
+  lower_95 = unname(calibration_coefficients - qnorm(0.975) * calibration_standard_error),
+  upper_95 = unname(calibration_coefficients + qnorm(0.975) * calibration_standard_error),
+  ideal = c(0, 1),
+  stringsAsFactors = FALSE
+)
+
+calibration_parameter_table <- calibration_parameters
+calibration_parameter_table$parameter <- c("Intercept hiệu chỉnh", "Slope hiệu chỉnh")
+colnames(calibration_parameter_table) <- c(
+  "Tham số", "Ước lượng", "Sai số chuẩn", "Cận dưới 95%", "Cận trên 95%", "Lý tưởng"
+)
+knitr::kable(
+  calibration_parameter_table,
+  digits = 3,
+  caption = "Intercept và slope hiệu chỉnh trên tập kiểm tra (khoảng Wald xấp xỉ 95%)"
+)
+
+calibration_decile_table <- test_calibration_deciles
+colnames(calibration_decile_table) <- c(
+  "Nhóm xác suất", "Số quan sát", "Xác suất dự đoán TB", "Tỷ lệ quan sát",
+  "Cận Wilson dưới", "Cận Wilson trên"
+)
+knitr::kable(
+  calibration_decile_table,
+  digits = 3,
+  caption = "Hiệu chỉnh theo mười nhóm trên tập kiểm tra"
+)
+```
+
+```{r pred-calibration-plot, echo=FALSE, fig.width=6.5, fig.height=5.5, fig.cap="Biểu đồ hiệu chỉnh theo nhóm trên tập kiểm tra"}
+ggplot2::ggplot(
+  test_calibration_deciles,
+  ggplot2::aes(x = mean_predicted, y = observed_rate)
+) +
+  ggplot2::geom_abline(
+    intercept = 0, slope = 1, linetype = "dashed", color = "grey55"
+  ) +
+  ggplot2::geom_errorbar(
+    ggplot2::aes(ymin = lower_95, ymax = upper_95),
+    width = 0.012,
+    color = "#1F5A94"
+  ) +
+  ggplot2::geom_point(
+    ggplot2::aes(size = n), color = "#1F5A94", alpha = 0.9
+  ) +
+  ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
+  ggplot2::scale_size_continuous(name = "Số quan sát") +
+  ggplot2::labs(
+    title = "Hiệu chỉnh xác suất trên tập kiểm tra",
+    subtitle = "Thanh dọc là khoảng Wilson 95%; đường đứt là hiệu chỉnh lý tưởng",
+    x = "Xác suất dự đoán trung bình",
+    y = "Tỷ lệ nghỉ việc quan sát"
+  ) +
+  ggplot2::theme_minimal(base_size = 11)
+```
+
+Intercept hiệu chỉnh ước lượng là `r format_number(calibration_parameters$estimate[calibration_parameters$parameter == "intercept"])` (KTC xấp xỉ 95%: `r format_number(calibration_parameters$lower_95[calibration_parameters$parameter == "intercept"])` đến `r format_number(calibration_parameters$upper_95[calibration_parameters$parameter == "intercept"])`); slope là `r format_number(calibration_parameters$estimate[calibration_parameters$parameter == "slope"])` (KTC xấp xỉ 95%: `r format_number(calibration_parameters$lower_95[calibration_parameters$parameter == "slope"])` đến `r format_number(calibration_parameters$upper_95[calibration_parameters$parameter == "slope"])`). Đây chỉ là phép đánh giá; các hệ số này không được dùng để hiệu chỉnh lại dự đoán trên tập kiểm tra.
+
+## Bất định của các thước đo xác suất
+
+Khoảng dưới đây dùng bootstrap phân tầng 500 lần trong tập kiểm tra với hạt giống cố định 20261108. Mỗi lần lấy mẫu lại riêng trong nhóm nghỉ việc và không nghỉ việc, giữ nguyên mô hình đã huấn luyện và xác suất đã dự đoán.
+
+```{r pred-bootstrap, echo=FALSE}
+bootstrap_count <- 500L
+bootstrap_metrics <- matrix(
+  NA_real_,
+  nrow = bootstrap_count,
+  ncol = 3L,
+  dimnames = list(NULL, c("roc_auc", "average_precision", "brier"))
+)
+negative_test_indices <- which(test_actual == 0L)
+positive_test_indices <- which(test_actual == 1L)
+if (length(negative_test_indices) == 0L || length(positive_test_indices) == 0L) {
+  stop_prediction("Bootstrap phân tầng cần đủ hai lớp trong tập kiểm tra.")
+}
+
+set.seed(20261108)
+for (bootstrap_index in seq_len(bootstrap_count)) {
+  sampled_indices <- c(
+    sample(negative_test_indices, length(negative_test_indices), replace = TRUE),
+    sample(positive_test_indices, length(positive_test_indices), replace = TRUE)
+  )
+  sampled_actual <- test_actual[sampled_indices]
+  sampled_probability <- test_probability[sampled_indices]
+  bootstrap_metrics[bootstrap_index, ] <- c(
+    roc_auc_rank(sampled_actual, sampled_probability),
+    average_precision(sampled_actual, sampled_probability),
+    brier_score(sampled_actual, sampled_probability)
+  )
+}
+if (anyNA(bootstrap_metrics) || any(!is.finite(bootstrap_metrics))) {
+  stop_prediction("Bootstrap tạo ra thước đo không hợp lệ.")
+}
+
+metric_estimates <- c(
+  roc_auc = selected_metric_row$roc_auc,
+  average_precision = selected_metric_row$average_precision,
+  brier = selected_metric_row$brier
+)
+metric_ci <- data.frame(
+  metric = names(metric_estimates),
+  estimate = unname(metric_estimates),
+  lower_95 = apply(bootstrap_metrics, 2L, quantile, probs = 0.025, names = FALSE),
+  upper_95 = apply(bootstrap_metrics, 2L, quantile, probs = 0.975, names = FALSE),
+  bootstrap_replicates = bootstrap_count,
+  stringsAsFactors = FALSE
+)
+
+metric_ci_table <- metric_ci
+metric_ci_table$metric <- c("ROC-AUC", "Average precision (AP)", "Brier")
+colnames(metric_ci_table) <- c(
+  "Thước đo", "Ước lượng", "Cận dưới 95%", "Cận trên 95%", "Số lần bootstrap"
+)
+knitr::kable(
+  metric_ci_table,
+  digits = 3,
+  caption = "Khoảng percentile bootstrap phân tầng trên tập kiểm tra"
+)
+```
+
+Khoảng bootstrap này có điều kiện trên mô hình đã huấn luyện: nó phản ánh biến thiên lấy mẫu trong tập kiểm tra nhưng **không** bao gồm bất định do phép chia dữ liệu, ước lượng lại mô hình, chọn đặc tả hay chọn ngưỡng. Số ca nghỉ việc trong tập kiểm tra chỉ là `r sum(test_actual == 1L)`, nên các đường cong, nhóm hiệu chỉnh và khoảng tin cậy có thể còn kém chính xác ở vùng xác suất cao.
+
+Cuối cùng, đây là thẩm định nội bộ hồi cứu trên một phép chia duy nhất, không phải thẩm định ngoài trên quần thể hay thời kỳ khác. Phân tích EDA trước đó đã xem toàn bộ dữ liệu, nên tập kiểm tra không thể được mô tả như một holdout tiền cứu hoàn toàn “nguyên vẹn”, dù kết quả của nó không được dùng trong lựa chọn tự động ở chương này. Các liên hệ dự đoán không hàm ý quan hệ nhân quả, và hiệu năng cần được kiểm tra lại trên dữ liệu độc lập trước khi hỗ trợ quyết định thực tế.
+
+# Kết luận và hàm ý
+
+## Tổng hợp kết quả nghiên cứu
+
+Báo cáo hoàn thành quy trình từ mô tả dữ liệu đến chẩn đoán, ước lượng và xác thực nội bộ. Mô hình diễn giải được chọn là **`r if (selected_spec == "spline_df2") "natural spline df = 2" else "tuyến tính trên thang logit"`**; mô hình dự đoán được chọn riêng từ cross-validation trên tập huấn luyện là **`r chosen_prediction_spec$label`**. Hai lựa chọn có thể khác nhau vì phục vụ hai mục tiêu và không dùng chung kết quả lựa chọn toàn mẫu.
+
+Với tăng ca (H8), odds ratio đã điều chỉnh của **Yes so với No** là
+**`r round(hypothesis_results$OR[hypothesis_results$hypothesis == "H8"], 2)`**,
+KTC Wald 95% từ `r round(hypothesis_results$lower[hypothesis_results$hypothesis == "H8"], 2)`
+đến `r round(hypothesis_results$upper[hypothesis_results$hypothesis == "H8"], 2)`.
+Đây là tỷ số **odds**, không phải tỷ số xác suất hay mức tăng theo điểm phần trăm.
+
+Bảng H1–H8 phía trên là đối chiếu chính thức trong phạm vi khám phá: cần đọc đồng thời chiều liên hệ, độ lớn, khoảng tin cậy và p-value hiệu chỉnh. Với biến liên tục dùng spline, tương phản phân vị 25 đến 75 chỉ mô tả hai điểm này, không chứng minh quan hệ tăng/giảm đơn điệu trên toàn miền. Với mức hài lòng, so sánh mức 4 với mức 1 không thay thế kiểm định chung toàn biến.
+
+Khả năng dự đoán phải đọc từ tập kiểm tra trong chương đánh giá, không từ AIC hay pseudo-R² trên toàn mẫu. Ngưỡng đã chọn là **`r round(selected_threshold, 3)`**; ngưỡng này cân bằng sensitivity và specificity theo Youden J trên dự đoán chéo huấn luyện, không tối ưu chi phí kinh doanh. Khoảng tin cậy bootstrap phản ánh bất định của tập kiểm tra có điều kiện trên mô hình đã huấn luyện, chưa bao gồm toàn bộ bất định do chọn mẫu và chọn mô hình.
+
+## Hàm ý quản trị có giới hạn
+
+- Dùng các liên hệ về tăng ca, hài lòng và đặc điểm công việc làm cơ sở đặt câu hỏi về điều kiện lao động; không suy từ hồi quy rằng một thay đổi đơn lẻ chắc chắn làm giảm nghỉ việc.
+- Nếu dùng dự báo để hỗ trợ giữ chân nhân sự, ưu tiên hỗ trợ tự nguyện; cần đánh giá chi phí bỏ sót/cảnh báo nhầm trước khi thay đổi ngưỡng.
+- `Gender`, tuổi và tình trạng hôn nhân được dùng để điều chỉnh trong nghiên cứu. Không dùng điểm rủi ro này để tự động tuyển dụng, sa thải hoặc đối xử bất lợi; trước ứng dụng thật phải đánh giá pháp lý, quyền riêng tư và chênh lệch sai số giữa các nhóm.
+
+## Giới hạn nghiên cứu
+
+1. Dữ liệu IBM là **giả định**, không đại diện cho một doanh nghiệp hay lực lượng lao động thực tế; chưa có xác thực ngoài mẫu từ nguồn độc lập.
+2. Thiết kế quan sát không có thông tin thời gian theo dõi, cụm phòng/đội hay nguyên nhân nghỉ việc. Giả định độc lập dựa trên một dòng mỗi nhân viên, không thể được chứng minh chỉ bằng mã định danh duy nhất.
+3. Các biến và giả thuyết đã được khám phá trên cùng bộ dữ liệu; hiệu chỉnh Holm không loại bỏ thiên lệch chọn mô hình. KTC và p-value sau chọn đặc tả chỉ mang tính điều kiện, không phải xác nhận giả thuyết đăng ký trước.
+4. Mất cân bằng lớp, số ca nghỉ việc hữu hạn và số tham số có thể gây bất ổn. Chẩn đoán số không thay thế kiểm định separation chuyên biệt hay xác thực trên dữ liệu mới.
+5. Các tương phản thay đổi từng biến trong khi giữ các biến khác có thể tạo tổ hợp tuổi/thâm niên ít quan sát hoặc không khả thi; đường cong và trung bình chuẩn hóa không được ngoại suy như tác động can thiệp.
+6. Mô hình chưa có thông tin chi phí quyết định, chính sách tổ chức hoặc thay đổi theo thời gian. Các kết quả hiện tại phục vụ học thuật và khám phá, chưa đủ để triển khai quyết định nhân sự thực tế.
+
+# Thông tin tái lập
+
+Seed tách mẫu và cross-validation được cố định trong phần dự đoán; không cài gói tự động trong lúc phân tích. Bản tổng hợp `logit1.rmd` chứa toàn bộ nội dung, mã R và CSS, không cần các file R Markdown hay CSS gốc. Giữ file `WA_Fn-UseC_-HR-Employee-Attrition.csv` cùng thư mục. Chạy `micromamba run -n capm-rmd Rscript -e "rmarkdown::render('logit1.rmd', encoding='UTF-8')"` để tính lại và xuất `logit1.html`.
+
+```{r reproducibility-session}
+sessionInfo()
+```
